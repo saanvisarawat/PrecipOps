@@ -61,7 +61,7 @@ class LiteSosController extends Notifier<bool> {
 
   Future<bool> _trySend(LiteSosRequest request) async {
     try {
-      await ref.read(floodOpsApiProvider).sendLiteSos(
+      await ref.read(preciopsApiProvider).sendLiteSos(
             lat: request.latitude,
             lng: request.longitude,
             description: request.description,

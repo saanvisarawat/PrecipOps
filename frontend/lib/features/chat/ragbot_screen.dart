@@ -63,7 +63,7 @@ class _RagbotScreenState extends ConsumerState<RagbotScreen> {
     });
     _scrollToBottom();
 
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     ChatResponse? response;
     String? errorText;
     try {

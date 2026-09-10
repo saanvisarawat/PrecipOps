@@ -50,6 +50,12 @@ class RouteOption {
   /// [steps] as real turn-by-turn guidance when this is true.
   final bool isOfflineEstimate;
 
+  /// True when every available candidate route passed through a blocked
+  /// (flooded) zone and this was picked only as the least-bad option — see
+  /// `RoutingService.getRouteAvoidingBlocked`. UI should show this as a
+  /// visible warning rather than presenting it as a clean evacuation path.
+  final bool crossesBlockedZone;
+
   const RouteOption({
     required this.id,
     required this.rank,
@@ -58,6 +64,7 @@ class RouteOption {
     required this.duration,
     required this.steps,
     this.isOfflineEstimate = false,
+    this.crossesBlockedZone = false,
   });
 
   String get distanceLabel => formatDistance(distanceMeters);

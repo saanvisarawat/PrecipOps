@@ -1,7 +1,7 @@
 enum OfflineRegionStatus { downloading, complete, failed, interrupted }
 
 /// A downloadable/downloaded offline map region. Regions are always one
-/// of the existing [KeralaDistricts] entries — picking a real district
+/// of the existing [NationalMetros] entries — picking a real metro
 /// instead of a freehand map rectangle keeps region selection simple and
 /// gives a predictable, testable tile count.
 class OfflineRegion {

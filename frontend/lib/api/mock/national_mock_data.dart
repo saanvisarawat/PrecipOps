@@ -1,22 +1,22 @@
 import 'dart:math';
-import '../../core/constants/kerala_districts.dart';
+import '../../core/constants/national_metros.dart';
 import '../models/shelter_models.dart';
 
-/// Hand-shaped, Kerala-specific fake data used by [MockFloodOpsApi].
-/// Coordinates are jittered around real district centers so pins land
-/// inside the correct district without claiming to be surveyed data.
-class KeralaMockData {
-  KeralaMockData._();
+/// Hand-shaped, pan-India fake data used by [MockPreciopsApi].
+/// Coordinates are jittered around real metro centers so pins land inside
+/// the correct city without claiming to be surveyed data.
+class NationalMockData {
+  NationalMockData._();
 
   static final Random _rng = Random(42);
 
   static const List<String> _shelterKinds = [
     'Govt. Higher Secondary School',
     'Community Hall',
-    'Panchayat Relief Camp',
-    'Govt. UP School',
-    'Parish Hall',
-    'Taluk Office Auditorium',
+    'Municipal Relief Camp',
+    'Govt. Primary School',
+    'Community Center',
+    'Ward Office Auditorium',
   ];
 
   static double _jitter(double base, double spread) =>
@@ -25,21 +25,21 @@ class KeralaMockData {
   static List<ShelterFeature> generateShelters() {
     final shelters = <ShelterFeature>[];
     var idCounter = 1;
-    for (final district in KeralaDistricts.all) {
-      final count = 2 + _rng.nextInt(2); // 2-3 shelters per district
+    for (final metro in NationalMetros.all) {
+      final count = 2 + _rng.nextInt(2); // 2-3 shelters per metro
       for (var i = 0; i < count; i++) {
         final capacity = 80 + _rng.nextInt(320);
         final occupancy = (_rng.nextDouble() * capacity * 1.05).round();
         final kind = _shelterKinds[_rng.nextInt(_shelterKinds.length)];
         shelters.add(ShelterFeature(
           id: 'shelter-${idCounter.toString().padLeft(3, '0')}',
-          name: '$kind, ${district.name}',
-          district: district.name,
-          latitude: _jitter(district.center.latitude, 0.09),
-          longitude: _jitter(district.center.longitude, 0.09),
+          name: '$kind, ${metro.name}',
+          district: metro.name,
+          latitude: _jitter(metro.center.latitude, 0.09),
+          longitude: _jitter(metro.center.longitude, 0.09),
           capacity: capacity,
           currentOccupancy: occupancy.clamp(0, capacity + 40),
-          address: '$kind Rd, ${district.name}, Kerala',
+          address: '$kind Rd, ${metro.name}',
         ));
         idCounter++;
       }
@@ -53,7 +53,7 @@ class KeralaMockData {
     'Vehicle stuck in waterlogged road, unable to move',
     'Landslide debris blocking only access road, house at risk',
     'Child and two adults stranded on rooftop, need immediate evacuation',
-    'Backwater embankment breach reported nearby, homes flooding fast',
+    'Storm drain overflow reported nearby, homes flooding fast',
     'No drinking water, house surrounded by floodwater for 2 days',
     'Diabetic patient needs medication, road submerged',
   ];

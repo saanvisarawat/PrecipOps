@@ -1,6 +1,6 @@
 /// Events mirrored from the real backend's ws://<backend>/ws/dashboard
 /// stream. In this build they're emitted by a local Stream/Timer
-/// (see MockFloodOpsApi.dashboardEventStream) instead of a real socket.
+/// (see MockPreciopsApi.dashboardEventStream) instead of a real socket.
 sealed class DashboardEvent {
   final DateTime timestamp;
   const DashboardEvent(this.timestamp);
@@ -100,7 +100,7 @@ class SosVerifiedEvent extends DashboardEvent {
 }
 
 /// The one event type that triggers a device push notification — fired only
-/// by `run_kerala_flood_pipeline`'s model-side risk check in `main.py`
+/// by `the hourly flood-risk pipeline job`'s model-side risk check in `main.py`
 /// (`is_high_risk` transitioning to true), never by a user/citizen action.
 class HighRiskAlertEvent extends DashboardEvent {
   final String district;

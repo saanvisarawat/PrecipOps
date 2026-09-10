@@ -38,11 +38,11 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              Text('Browsing as guest', style: AppTypography.screenTitle(), textAlign: TextAlign.center),
+              Text('Not signed in', style: AppTypography.screenTitle(), textAlign: TextAlign.center),
               const SizedBox(height: 6),
               Text(
-                'SOS, Risk, Map, Ragbot and Verification all work without an '
-                'account. Sign in only if you\'re a Volunteer or Official.',
+                'Preciops now requires an account for every role — sign in to '
+                'reach your Predictor, Responder or Citizen dashboard.',
                 style: AppTypography.body(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
@@ -50,7 +50,7 @@ class ProfileScreen extends ConsumerWidget {
               AppButton(label: 'Sign In', onPressed: () => context.push('/login')),
               const SizedBox(height: AppSpacing.sm),
               AppButton.secondary(
-                label: 'Create Volunteer / Official Account',
+                label: 'Create an Account',
                 onPressed: () => context.push('/register'),
               ),
             ] else ...[
@@ -116,20 +116,34 @@ class ProfileScreen extends ConsumerWidget {
               if (auth.user!.role == UserRole.volunteer || auth.user!.role == UserRole.official) ...[
                 _SettingsSection(
                   rows: [
-                    if (auth.user!.role == UserRole.volunteer)
+                    if (auth.user!.role == UserRole.volunteer) ...[
+                      _SettingsRowData(
+                        icon: Icons.shield_outlined,
+                        title: 'Responder Dashboard',
+                        subtitle: 'Tactical map, routing, protocol & analytics',
+                        onTap: () => context.push('/responder'),
+                      ),
                       _SettingsRowData(
                         icon: Icons.volunteer_activism_outlined,
                         title: 'Volunteer Command Hub',
                         subtitle: 'Duty status, skills, assigned tasks, masked calling',
                         onTap: () => context.push('/volunteer-hub'),
                       ),
-                    if (auth.user!.role == UserRole.official)
+                    ],
+                    if (auth.user!.role == UserRole.official) ...[
                       _SettingsRowData(
                         icon: Icons.satellite_alt_outlined,
-                        title: 'Live Command Center',
-                        subtitle: 'Real-time SOS stream and map',
-                        onTap: () => context.push('/live-dashboard'),
+                        title: 'Predictor Dashboard',
+                        subtitle: '4-Pillar HUD, inundation map, time-lapse',
+                        onTap: () => context.push('/predictor'),
                       ),
+                      _SettingsRowData(
+                        icon: Icons.list_alt_outlined,
+                        title: 'Legacy SOS Dashboard',
+                        subtitle: 'Every citizen report, manual dispatch',
+                        onTap: () => context.push('/sos-dashboard'),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: AppSpacing.section),

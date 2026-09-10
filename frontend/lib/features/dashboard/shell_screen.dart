@@ -9,28 +9,24 @@ import '../../providers/stream_providers.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/glass_bottom_nav.dart';
 import '../chat/ragbot_screen.dart';
+import '../citizen/citizen_dashboard_screen.dart';
 import '../hub/hub_screen.dart';
 import '../map/evacuation_map_screen.dart';
-import '../risk/risk_predictor_screen.dart';
 import '../verification/verification_feed_screen.dart';
-import 'dashboard_screen.dart';
 
-/// Guest-first shell: SOS, Risk, Map, Ragbot, Verify and the Feature Hub
-/// are all reachable immediately with no login. The profile icon
-/// (low-emphasis, optional) is the only entry point toward
-/// Volunteer/Official login. Tab index lives in [shellTabIndexProvider]
-/// so other screens (the Hub) can switch tabs without pushing a
-/// duplicate stacked route.
+/// The Citizen shell (post-login, CITIZEN role only): Home, Hub,
+/// Evacuation Map, Ragbot, Verify. Tab index lives in
+/// [shellTabIndexProvider] so other screens (the Hub) can switch tabs
+/// without pushing a duplicate stacked route.
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key});
 
-  static const _titles = ['FloodOps Kerala', 'Hub', 'Evacuation Map', 'Risk Predictor', 'Ragbot', 'Verify'];
+  static const _titles = ['Preciops', 'Hub', 'Evacuation Map', 'Ragbot', 'Verify'];
 
   static const _screens = [
-    DashboardScreen(),
+    CitizenDashboardScreen(),
     HubScreen(),
     EvacuationMapScreen(),
-    RiskPredictorScreen(),
     RagbotScreen(),
     VerificationFeedScreen(),
   ];
@@ -79,7 +75,7 @@ class ShellScreen extends ConsumerWidget {
               actions: [
                 IconButton(
                   icon: const Icon(Icons.account_circle_outlined, size: 28),
-                  tooltip: 'Profile / Volunteer & Official login',
+                  tooltip: 'Profile',
                   onPressed: () => context.push('/profile'),
                 ),
                 const SizedBox(width: 4),
@@ -94,7 +90,6 @@ class ShellScreen extends ConsumerWidget {
           GlassBottomNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
           GlassBottomNavItem(icon: Icons.grid_view_outlined, selectedIcon: Icons.grid_view, label: 'Hub'),
           GlassBottomNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Map'),
-          GlassBottomNavItem(icon: Icons.speed_outlined, selectedIcon: Icons.speed, label: 'Risk'),
           GlassBottomNavItem(icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble, label: 'Ragbot'),
           GlassBottomNavItem(icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check, label: 'Verify'),
         ],

@@ -52,7 +52,7 @@ class _SheltersNearMeScreenState extends ConsumerState<SheltersNearMeScreen> {
 
     List<ShelterFeature> shelters = const [];
     try {
-      shelters = (await ref.read(floodOpsApiProvider).getSheltersGeoJson()).features;
+      shelters = (await ref.read(preciopsApiProvider).getSheltersGeoJson()).features;
     } catch (_) {
       if (mounted) {
         AppToast.show(context, "Couldn't load shelters — check your connection.", kind: AppToastKind.error);

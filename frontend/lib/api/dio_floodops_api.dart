@@ -6,11 +6,12 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import '../core/constants/kerala_districts.dart';
+import '../core/constants/national_metros.dart';
 import 'floodops_api.dart';
 
-/// Real backend implementation of [FloodOpsApi], talking to the FastAPI
-/// service at github.com/saanvisarawat/FloodOps_DecodeSIH.
+/// Real backend implementation of [PreciopsApi], talking to the Preciops
+/// FastAPI backend (PS 26071 — heavy rainfall early warning & inundation
+/// prediction).
 ///
 /// This class is an *adapter*, not a mirror: the real backend's endpoint
 /// shapes were built independently of this app's contract (see
@@ -23,8 +24,8 @@ import 'floodops_api.dart';
 /// clean contract unchanged; this file absorbs all of the real backend's
 /// quirks so the rest of the app never has to know about them. Known gaps
 /// are called out inline below with `NOTE:`.
-class DioFloodOpsApi implements FloodOpsApi {
-  DioFloodOpsApi({required String baseUrl, required String wsBaseUrl, String? authToken})
+class DioPreciopsApi implements PreciopsApi {
+  DioPreciopsApi({required String baseUrl, required String wsBaseUrl, String? authToken})
       : _wsBaseUrl = wsBaseUrl,
         _dio = Dio(BaseOptions(baseUrl: baseUrl)) {
     _authToken = authToken;
@@ -62,8 +63,8 @@ class DioFloodOpsApi implements FloodOpsApi {
 
   /// Called by [AuthController] after login/register/session-restore
   /// succeeds (and with `null` on logout) so every subsequent request
-  /// carries the real Bearer token. `FloodOpsApi` doesn't declare this —
-  /// callers check `api is DioFloodOpsApi` first — because `MockFloodOpsApi`
+  /// carries the real Bearer token. `PreciopsApi` doesn't declare this —
+  /// callers check `api is DioPreciopsApi` first — because `MockPreciopsApi`
   /// has no concept of a token.
   void setAuthToken(String? token) => _authToken = token;
 
@@ -361,80 +362,6 @@ class DioFloodOpsApi implements FloodOpsApi {
   }
 
   // ---------------------------------------------------------------------
-  // 4. ML flood risk predictor
-  // ---------------------------------------------------------------------
-
-  @override
-  Future<RiskPredictionResponse> predictRisk(RiskPredictionRequest request) async {
-    // Real /api/predict/risk takes the trained model's actual 12 column
-    // names (rainfall_mm, river_discharge, elevation_m, slope_deg,
-    // dist_nearest_river_km, the *_3d/7d/15d_sum rolling windows, and
-    // historical_flood_count) — not this app's UI-facing fields, and not
-    // the old rain_3d_sum/mean_elevation_m/state_norm shape this used to
-    // send (schemas.RiskPredictionRequest was realigned to the model's
-    // real column names; the old shape now gets rejected outright with a
-    // 422). historical_flood_count still comes from the same per-district
-    // baseline table `app/main.py`'s own hourly pipeline uses; river
-    // discharge has no UI input at all, so it's approximated from
-    // rainfall the same way the backend's own citizen-facing endpoint
-    // used to before this schema realignment.
-    // The naive linear extrapolation this used to do — rain7d = 3-day
-    // total * 7/3, rain15d = 3-day total * 15/3 — pushed rainfall_mm_15d_sum
-    // past the backend's fixed 180mm "heavy rain override" threshold for
-    // almost any slider value >=36 (out of this screen's full 20-400
-    // range), so nearly every district read CRITICAL regardless of the
-    // actual slider position. These smaller, empirically-checked
-    // multipliers keep the override reachable only for genuinely high
-    // slider values (150+) instead of nearly the whole range.
-    final baseline = _keralaStaticFeatures[request.district] ?? _keralaStaticFeatures.values.first;
-    final rainfallMm = request.rainfallMm3Day / 3.0;
-    final rain7d = request.rainfallMm3Day * 1.3;
-    final rain15d = request.rainfallMm3Day * 1.5;
-    final payload = {
-      'rainfall_mm': rainfallMm,
-      'river_discharge': rainfallMm * 2.5,
-      'elevation_m': request.elevationM,
-      'slope_deg': request.slopeDeg,
-      'dist_nearest_river_km': request.riverProximityKm,
-      'rainfall_mm_3d_sum': request.rainfallMm3Day,
-      'rainfall_mm_7d_sum': rain7d,
-      'rainfall_mm_15d_sum': rain15d,
-      'river_discharge_3d_sum': request.rainfallMm3Day * 2.5,
-      'river_discharge_7d_sum': rain7d * 2.0,
-      'river_discharge_15d_sum': rain15d * 1.5,
-      'historical_flood_count': baseline['historical_flood_count'],
-    };
-    final res = await _dio.post('/api/predict/risk', data: payload);
-    final data = res.data as Map<String, dynamic>;
-    // `top_factors` is a plain `[name, name, ...]` list (already ranked by
-    // SHAP magnitude server-side, highest first) — not `{feature,
-    // shap_value}` dicts. Casting each entry to a Map here used to throw
-    // on every single call (a plain String has no `.feature` key), which
-    // silently turned a successful 200 response into a caught exception
-    // — that's what was showing "Risk score unavailable" on the home
-    // screen even though the request worked. No real magnitude is
-    // available, so weight is synthesized from rank order (first =
-    // biggest contributor) purely so the pie chart still shows the
-    // correct relative ordering.
-    final rawFactors = (data['top_factors'] as List?) ?? const [];
-    final factors = <RiskFactor>[
-      for (var i = 0; i < rawFactors.length; i++)
-        RiskFactor(
-          factor: _humanizeFeatureName(rawFactors[i] as String),
-          weight: (rawFactors.length - i).toDouble(),
-        ),
-    ];
-    return RiskPredictionResponse(
-      riskScore: (data['risk_score'] as num).toDouble(),
-      district: request.district,
-      topFactors: factors,
-    );
-  }
-
-  String _humanizeFeatureName(String raw) =>
-      raw.replaceAll('_', ' ').split(' ').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');
-
-  // ---------------------------------------------------------------------
   // 3. RAG survival chatbot
   // ---------------------------------------------------------------------
 
@@ -456,7 +383,7 @@ class DioFloodOpsApi implements FloodOpsApi {
     // live server until that one line is added backend-side.
     final res = await _dio.post('/api/agents/trigger', data: {
       'district': district,
-      'incident_data': 'Requested from FloodOps mobile app.',
+      'incident_data': 'Requested from Preciops mobile app.',
     });
     final data = res.data as Map<String, dynamic>;
     final now = DateTime.now();
@@ -589,16 +516,6 @@ class DioFloodOpsApi implements FloodOpsApi {
   }
 
   // ---------------------------------------------------------------------
-  // 10. Kerala live dam/river/risk cache
-  // ---------------------------------------------------------------------
-
-  @override
-  Future<KeralaLiveDashboard> getKeralaLiveDashboard() async {
-    final res = await _dio.get('/api/dashboard/live-kerala');
-    return KeralaLiveDashboard.fromJson(res.data as Map<String, dynamic>);
-  }
-
-  // ---------------------------------------------------------------------
   // 11. Voice Agent
   // ---------------------------------------------------------------------
 
@@ -643,18 +560,7 @@ class DioFloodOpsApi implements FloodOpsApi {
   // helpers
   // ---------------------------------------------------------------------
 
-  DistrictProfile _nearestDistrict(double lat, double lng) {
-    DistrictProfile nearest = KeralaDistricts.all.first;
-    double best = double.infinity;
-    for (final d in KeralaDistricts.all) {
-      final dist = _distanceMeters(lat, lng, d.center.latitude, d.center.longitude);
-      if (dist < best) {
-        best = dist;
-        nearest = d;
-      }
-    }
-    return nearest;
-  }
+  MetroProfile _nearestDistrict(double lat, double lng) => NationalMetros.nearest(lat, lng);
 
   double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
     const r = 6371000.0;
@@ -715,24 +621,81 @@ class DioFloodOpsApi implements FloodOpsApi {
     _incomingCallController.close();
     _dio.close();
   }
-}
 
-/// Copied verbatim from `app/main.py`'s `run_kerala_flood_pipeline()`
-/// `static_features` table so `predictRisk`'s district-level defaults
-/// match what the live backend's own hourly job feeds the model.
-const Map<String, Map<String, double>> _keralaStaticFeatures = {
-  'Thiruvananthapuram': {'impervious_surface_pct': 35.0, 'historical_flood_count': 5, 'days_since_last_flood': 200.0},
-  'Kollam': {'impervious_surface_pct': 28.0, 'historical_flood_count': 6, 'days_since_last_flood': 180.0},
-  'Pathanamthitta': {'impervious_surface_pct': 14.0, 'historical_flood_count': 9, 'days_since_last_flood': 220.0},
-  'Alappuzha': {'impervious_surface_pct': 20.0, 'historical_flood_count': 15, 'days_since_last_flood': 90.0},
-  'Kottayam': {'impervious_surface_pct': 22.0, 'historical_flood_count': 11, 'days_since_last_flood': 110.0},
-  'Idukki': {'impervious_surface_pct': 5.5, 'historical_flood_count': 8, 'days_since_last_flood': 340.0},
-  'Ernakulam': {'impervious_surface_pct': 45.2, 'historical_flood_count': 12, 'days_since_last_flood': 120.0},
-  'Thrissur': {'impervious_surface_pct': 32.0, 'historical_flood_count': 10, 'days_since_last_flood': 130.0},
-  'Palakkad': {'impervious_surface_pct': 18.0, 'historical_flood_count': 7, 'days_since_last_flood': 150.0},
-  'Malappuram': {'impervious_surface_pct': 25.0, 'historical_flood_count': 9, 'days_since_last_flood': 140.0},
-  'Kozhikode': {'impervious_surface_pct': 40.0, 'historical_flood_count': 11, 'days_since_last_flood': 115.0},
-  'Wayanad': {'impervious_surface_pct': 8.0, 'historical_flood_count': 10, 'days_since_last_flood': 180.0},
-  'Kannur': {'impervious_surface_pct': 30.0, 'historical_flood_count': 8, 'days_since_last_flood': 125.0},
-  'Kasaragod': {'impervious_surface_pct': 22.0, 'historical_flood_count': 7, 'days_since_last_flood': 135.0},
-};
+  // ---------------------------------------------------------------------
+  // 14-19. PS 26071 — inundation, routing, protocol, analytics, citizen ops
+  // ---------------------------------------------------------------------
+
+  @override
+  Future<InundationSimulationResponse> getInundationSimulation({
+    required String district,
+    required String scenario,
+  }) async {
+    final res = await _dio.get(
+      '/api/v1/inundation/simulate',
+      queryParameters: {'district': district, 'scenario': scenario},
+    );
+    return InundationSimulationResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<BlockedNodesResponse> getBlockedNodes({required String zoneId}) async {
+    final res = await _dio.get('/api/v1/routing/blocked-nodes', queryParameters: {'zone_id': zoneId});
+    return BlockedNodesResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<NdmaProtocolResponse> getNdmaProtocol({
+    required String district,
+    required String alertLevel,
+    double? radarDbz,
+    double? satelliteTempK,
+  }) async {
+    final res = await _dio.get('/api/v1/agents/protocol', queryParameters: {
+      'district': district,
+      'alert_level': alertLevel,
+      if (radarDbz != null) 'radar_dbz': radarDbz,
+      if (satelliteTempK != null) 'satellite_temp_k': satelliteTempK,
+    });
+    return NdmaProtocolResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<StormComparisonResponse> getStormComparison({required String district}) async {
+    final res = await _dio.get('/api/v1/analytics/storm-comparison', queryParameters: {'district': district});
+    return StormComparisonResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<SmsBroadcastResult> broadcastEmergencySms({
+    required String district,
+    required String zoneId,
+    required String alertMessage,
+  }) async {
+    final res = await _dio.post('/api/v1/citizen/broadcast', data: {
+      'district': district,
+      'zone_id': zoneId,
+      'alert_message': alertMessage,
+    });
+    return SmsBroadcastResult.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<GroundTruthReportResult> submitGroundTruth({
+    required String district,
+    required double lat,
+    required double lng,
+    required double observedWaterDepthMeters,
+    required String description,
+  }) async {
+    final res = await _dio.post('/api/v1/citizen/verification/upload', data: {
+      'district': district,
+      'latitude': lat,
+      'longitude': lng,
+      'observed_water_depth_meters': observedWaterDepthMeters,
+      'description': description,
+      'reporter_role': 'CITIZEN_VOLUNTEER',
+    });
+    return GroundTruthReportResult.fromJson(res.data as Map<String, dynamic>);
+  }
+}

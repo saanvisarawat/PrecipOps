@@ -43,7 +43,7 @@ class SosController extends Notifier<bool> {
     final isOnline = ref.read(isOnlineProvider);
     try {
       if (isOnline) {
-        final api = ref.read(floodOpsApiProvider);
+        final api = ref.read(preciopsApiProvider);
         final report = await api.createReport(request);
         state = false;
         return SosOutcome(
@@ -76,7 +76,7 @@ class SosController extends Notifier<bool> {
     final queue = ref.read(offlineQueueServiceProvider);
     final pending = await queue.getAll();
     if (pending.isEmpty) return 0;
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     final result = await api.bulkSyncReports(pending);
     await queue.removeByClientIds(result.syncedClientIds);
     // Duplicates are also safe to drop locally — the backend already has

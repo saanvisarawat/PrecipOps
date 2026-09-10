@@ -6,7 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../../core/constants/kerala_districts.dart';
+import '../../../core/constants/national_metros.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../providers/connectivity_provider.dart';
@@ -140,8 +140,8 @@ class _NavigationMapScreenState extends ConsumerState<NavigationMapScreen> with 
               return FlutterMap(
                 mapController: _mapController,
                 options: MapOptions(
-                  initialCenter: widget.initialDestination?.point ?? position ?? KeralaDistricts.keralaMapCenter,
-                  initialZoom: position != null ? 15.5 : KeralaDistricts.keralaMapDefaultZoom,
+                  initialCenter: widget.initialDestination?.point ?? position ?? NationalMetros.indiaMapCenter,
+                  initialZoom: position != null ? 15.5 : NationalMetros.indiaMapDefaultZoom,
                   minZoom: 5,
                   maxZoom: 19,
                   onPositionChanged: (camera, hasGesture) {
@@ -312,7 +312,7 @@ class _LocationBlockedView extends StatelessWidget {
       case LocationAvailability.servicesDisabled:
         return (Icons.location_disabled_rounded, 'Location services are off', 'Turn on Location Services in your device settings to use the offline map and navigation.');
       case LocationAvailability.permissionDeniedForever:
-        return (Icons.lock_outline_rounded, 'Location permission required', 'FloodOps needs location access to show your position and calculate routes. Enable it from the app\'s system settings.');
+        return (Icons.lock_outline_rounded, 'Location permission required', 'Preciops needs location access to show your position and calculate routes. Enable it from the app\'s system settings.');
       case LocationAvailability.permissionDenied:
         return (Icons.my_location_rounded, 'Location permission required', 'Allow location access to see your position on the map and get directions.');
       case LocationAvailability.available:

@@ -15,7 +15,7 @@ import 'web_notifier.dart';
 ///   2. Replace [requestPermissionAndGetMockToken] with
 ///      `FirebaseMessaging.instance.requestPermission()` +
 ///      `FirebaseMessaging.instance.getToken()`, and call
-///      `FloodOpsApi.registerFcmToken` with the real token.
+///      `PreciopsApi.registerFcmToken` with the real token.
 ///   3. Listen to `FirebaseMessaging.onMessage` /
 ///      `onBackgroundMessage` and route `type: "EMERGENCY_INCOMING_CALL"`
 ///      data payloads to the masked-call screen the same way
@@ -55,7 +55,7 @@ class NotificationService {
   /// Stands in for requesting system notification permission + FCM token
   /// registration on first launch (features.docx: "FCM Push Notification
   /// Listener"). Returns a plausible fake token so
-  /// `FloodOpsApi.registerFcmToken` has something to send.
+  /// `PreciopsApi.registerFcmToken` has something to send.
   Future<String> requestPermissionAndGetMockToken() async {
     await _localNotifications
         .resolvePlatformSpecificImplementation<

@@ -1,5 +1,5 @@
-name: floodops_frontend
-description: "A new Flutter project."
+name: preciops_frontend
+description: "Preciops — AI/ML-based integrated heavy rainfall early warning and inundation prediction system (PS 26071)."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -67,6 +67,9 @@ dependencies:
   # Maps
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
+
+  # Charts (Responder Dashboard storm-comparison analytics)
+  fl_chart: ^0.69.0
 
   # WebSocket (mocked via local Stream for now)
   web_socket_channel: ^3.0.2

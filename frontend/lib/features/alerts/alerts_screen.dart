@@ -23,7 +23,7 @@ import '../../widgets/status_badge.dart';
 /// `dashboardEventStreamProvider` (ws://.../ws/dashboard) the Official
 /// Command Center already listens to.
 ///
-/// `high_risk_alert` events (model-determined, see `run_kerala_flood_pipeline`
+/// `high_risk_alert` events (model-determined, see `the hourly flood-risk pipeline job`
 /// in `main.py`) are also shown here. The actual push notification for one
 /// is fired app-wide by [riskPushNotifierProvider] (watched from
 /// `ShellScreen`, not here) so it still fires even when this tab isn't

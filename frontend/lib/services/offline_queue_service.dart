@@ -23,7 +23,7 @@ void _ensureDatabaseFactory() {
 /// Real (not mocked) local offline queue for SOS reports, backed by
 /// sqflite. When the device has no connectivity, [SosController] writes
 /// here instead of calling the API. When connectivity returns, the queue
-/// is drained via `FloodOpsApi.bulkSyncReports` and rows are deleted.
+/// is drained via `PreciopsApi.bulkSyncReports` and rows are deleted.
 class OfflineQueueService {
   static const _dbName = 'floodops_offline_queue.db';
   static const _table = 'queued_reports';

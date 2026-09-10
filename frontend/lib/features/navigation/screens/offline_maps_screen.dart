@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/kerala_districts.dart';
+import '../../../core/constants/national_metros.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
@@ -20,8 +20,8 @@ import '../services/offline_map_service.dart';
 /// bytes, not this constant.
 const int _kAssumedTileBytes = 15 * 1024;
 
-/// A downloadable region is one of Kerala's 14 districts (reusing
-/// [KeralaDistricts] — the app's only real geographic dataset) with a
+/// A downloadable region is one of the app's 5 national metros (reusing
+/// [NationalMetros] — the app's only real geographic dataset) with a
 /// fixed-radius bounding box, rather than a freehand map-rectangle
 /// picker. Simpler to use correctly, and every region has a predictable,
 /// previewable tile count.
@@ -30,7 +30,7 @@ class _DistrictRegion {
   final double north, south, east, west;
   const _DistrictRegion({required this.name, required this.north, required this.south, required this.east, required this.west});
 
-  factory _DistrictRegion.fromCenter(DistrictProfile d) {
+  factory _DistrictRegion.fromCenter(MetroProfile d) {
     const halfDegLat = 0.35;
     final halfDegLon = 0.35 / (0.999 - 0.002 * d.center.latitude.abs() / 15);
     return _DistrictRegion(
@@ -51,7 +51,7 @@ class OfflineMapsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final regionsAsync = ref.watch(offlineRegionsControllerProvider);
-    final districts = KeralaDistricts.all.map(_DistrictRegion.fromCenter).toList();
+    final districts = NationalMetros.all.map(_DistrictRegion.fromCenter).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Offline Maps')),

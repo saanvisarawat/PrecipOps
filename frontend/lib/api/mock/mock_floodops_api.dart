@@ -4,17 +4,17 @@ import 'dart:typed_data';
 
 import 'package:uuid/uuid.dart';
 
-import '../../core/constants/kerala_districts.dart';
+import '../../core/constants/national_metros.dart';
 import '../floodops_api.dart';
-import 'kerala_mock_data.dart';
+import 'national_mock_data.dart';
 
 /// Fully self-contained mock of the FastAPI backend described in
 /// features.docx. Every method has a small artificial delay so loading
 /// states are visible, and every response shape matches what the real
 /// backend is expected to return (see API_CONTRACT.md). No screen should
-/// ever see this class directly — they depend on [FloodOpsApi].
-class MockFloodOpsApi implements FloodOpsApi {
-  MockFloodOpsApi() {
+/// ever see this class directly — they depend on [PreciopsApi].
+class MockPreciopsApi implements PreciopsApi {
+  MockPreciopsApi() {
     _reports.addAll(_seedReports());
   }
 
@@ -113,7 +113,7 @@ class MockFloodOpsApi implements FloodOpsApi {
     final role = request.email.contains('official') ? UserRole.official : UserRole.volunteer;
     final user = UserProfile(
       id: _uuid.v4(),
-      fullName: displayName.isEmpty ? 'Kerala Responder' : displayName,
+      fullName: displayName.isEmpty ? 'Field Responder' : displayName,
       email: request.email,
       role: role,
     );
@@ -272,57 +272,8 @@ class MockFloodOpsApi implements FloodOpsApi {
   @override
   Future<ShelterFeatureCollection> getSheltersGeoJson() async {
     await _delay(500, 1100);
-    _sheltersCache ??= ShelterFeatureCollection(KeralaMockData.generateShelters());
+    _sheltersCache ??= ShelterFeatureCollection(NationalMockData.generateShelters());
     return _sheltersCache!;
-  }
-
-  // ---------------------------------------------------------------------
-  // 4. ML flood risk predictor
-  // ---------------------------------------------------------------------
-
-  @override
-  Future<RiskPredictionResponse> predictRisk(RiskPredictionRequest request) async {
-    await _delay(700, 1600);
-    final profile = KeralaDistricts.byName(request.district);
-
-    // Believable, deterministic-ish scoring blend: district baseline plus
-    // weighted user inputs, clamped to 0-100.
-    final double rainfallContribution =
-        (request.rainfallMm3Day / 400).clamp(0, 1).toDouble() * 30;
-    final double saturationContribution =
-        (request.soilSaturationPct / 100).clamp(0, 1).toDouble() * 20;
-    final double slopeRelief =
-        (request.slopeDeg / 30).clamp(0, 1).toDouble() * 12; // steeper drains faster
-    final double elevationRelief =
-        (request.elevationM / 2000).clamp(0, 1).toDouble() * 10;
-    final double riverProximityContribution =
-        (1 - (request.riverProximityKm / 10).clamp(0, 1).toDouble()) * 15;
-    final double reservoirContribution =
-        (request.reservoirLevelPct / 100).clamp(0, 1).toDouble() * 10;
-
-    double score = profile.baseRiskScore * 0.35 +
-        rainfallContribution +
-        saturationContribution +
-        riverProximityContribution +
-        reservoirContribution -
-        slopeRelief -
-        elevationRelief;
-    score = score.clamp(2, 98).toDouble();
-
-    final factors = <RiskFactor>[
-      RiskFactor(factor: 'Heavy 3-Day Rainfall', weight: rainfallContribution),
-      RiskFactor(factor: 'Soil Saturation', weight: saturationContribution),
-      RiskFactor(factor: 'River Proximity', weight: riverProximityContribution),
-      RiskFactor(factor: 'Reservoir/Dam Level', weight: reservoirContribution),
-      RiskFactor(factor: 'Terrain Slope (protective)', weight: -slopeRelief),
-      RiskFactor(factor: 'Elevation (protective)', weight: -elevationRelief),
-    ]..sort((a, b) => b.weight.abs().compareTo(a.weight.abs()));
-
-    return RiskPredictionResponse(
-      riskScore: score.toDouble(),
-      district: request.district,
-      topFactors: factors.take(4).toList(),
-    );
   }
 
   // ---------------------------------------------------------------------
@@ -333,7 +284,7 @@ class MockFloodOpsApi implements FloodOpsApi {
   Future<ChatResponse> sendChatMessage(ChatRequest request) async {
     await _delay(500, 1500);
     final isOnline = _rng.nextDouble() < 0.65;
-    final replies = isOnline ? KeralaMockData.chatOnlineReplies : KeralaMockData.chatOfflineReplies;
+    final replies = isOnline ? NationalMockData.chatOnlineReplies : NationalMockData.chatOfflineReplies;
     final reply = replies[_rng.nextInt(replies.length)];
     return ChatResponse(reply: reply, mode: isOnline ? ChatMode.online : ChatMode.offline);
   }
@@ -345,7 +296,7 @@ class MockFloodOpsApi implements FloodOpsApi {
   @override
   Future<AgentHubResponse> runAgentHubAnalysis(String district) async {
     await _delay(1200, 2200);
-    final profile = KeralaDistricts.byName(district);
+    final profile = NationalMetros.byName(district);
     final now = DateTime.now();
     final steps = <AgentExecutionStep>[
       AgentExecutionStep(
@@ -420,10 +371,10 @@ class MockFloodOpsApi implements FloodOpsApi {
   @override
   Future<List<VolunteerTask>> getVolunteerTasks() async {
     await _delay(500, 1100);
-    final districts = KeralaDistricts.all;
-    return List.generate(KeralaMockData.taskTemplates.length, (i) {
+    final districts = NationalMetros.all;
+    return List.generate(NationalMockData.taskTemplates.length, (i) {
       final district = districts[_rng.nextInt(districts.length)];
-      final template = KeralaMockData.taskTemplates[i];
+      final template = NationalMockData.taskTemplates[i];
       return VolunteerTask(
         taskId: 'TASK-${(i + 1).toString().padLeft(3, '0')}',
         sosTicketId: 'SOS-${_uuid.v4().substring(0, 8).toUpperCase()}',
@@ -452,8 +403,8 @@ class MockFloodOpsApi implements FloodOpsApi {
         : null;
     final district = report != null
         ? _nearestDistrict(report.latitude, report.longitude)
-        : KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
-    final alias = KeralaMockData.reporterAliases[_rng.nextInt(KeralaMockData.reporterAliases.length)];
+        : NationalMetros.all[_rng.nextInt(NationalMetros.all.length)];
+    final alias = NationalMockData.reporterAliases[_rng.nextInt(NationalMockData.reporterAliases.length)];
     _incomingCallController.add(MaskedCallPayload(
       sosId: report?.ticketId ?? 'SOS-${_uuid.v4().substring(0, 8).toUpperCase()}',
       callerAlias: alias,
@@ -484,12 +435,12 @@ class MockFloodOpsApi implements FloodOpsApi {
     _dashboardTimer?.cancel();
     _dashboardTimer = Timer.periodic(const Duration(seconds: 9), (_) {
       if (_dashboardController == null || _dashboardController!.isClosed) return;
-      // Mirrors main.py's run_kerala_flood_pipeline: the only event that
+      // Mirrors main.py's the hourly flood-risk pipeline job: the only event that
       // triggers a push notification is a model-side high-risk read, never
       // a user/citizen action — kept rare here since it's a demo stand-in
       // for an hourly pipeline run finding a district newly high-risk.
       if (_rng.nextDouble() < 0.12) {
-        final district = KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
+        final district = NationalMetros.all[_rng.nextInt(NationalMetros.all.length)];
         final riskScore = 81 + _rng.nextInt(19);
         _dashboardController!.add(HighRiskAlertEvent(
           district: district.name,
@@ -512,11 +463,11 @@ class MockFloodOpsApi implements FloodOpsApi {
           timestamp: DateTime.now(),
         ));
       } else {
-        final district = KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
+        final district = NationalMetros.all[_rng.nextInt(NationalMetros.all.length)];
         final lat = district.center.latitude + (_rng.nextDouble() - 0.5) * 0.1;
         final lng = district.center.longitude + (_rng.nextDouble() - 0.5) * 0.1;
-        final description = KeralaMockData
-            .sosDescriptions[_rng.nextInt(KeralaMockData.sosDescriptions.length)];
+        final description = NationalMockData
+            .sosDescriptions[_rng.nextInt(NationalMockData.sosDescriptions.length)];
         final summary = ReportSummary(
           ticketId: 'SOS-${_uuid.v4().substring(0, 8).toUpperCase()}',
           description: description,
@@ -528,7 +479,7 @@ class MockFloodOpsApi implements FloodOpsApi {
           status: ReportStatus.pending,
           reportedAt: DateTime.now(),
           reporterAlias:
-              KeralaMockData.reporterAliases[_rng.nextInt(KeralaMockData.reporterAliases.length)],
+              NationalMockData.reporterAliases[_rng.nextInt(NationalMockData.reporterAliases.length)],
         );
         _reports.insert(0, summary);
         _dashboardController!.add(NewSosPendingEvent(
@@ -547,50 +498,6 @@ class MockFloodOpsApi implements FloodOpsApi {
     if (_dashboardController != null && !_dashboardController!.isClosed) {
       _dashboardController!.add(event);
     }
-  }
-
-  // ---------------------------------------------------------------------
-  // 10. Kerala live dam/river/risk cache
-  // ---------------------------------------------------------------------
-
-  @override
-  Future<KeralaLiveDashboard> getKeralaLiveDashboard() async {
-    await _delay(200, 500);
-    final districts = KeralaDistricts.all
-        .map((d) => DistrictLiveRisk(
-              district: d.name,
-              rainfallMm: (d.avgAnnualRainfallMm / 200) + _rng.nextDouble() * 15,
-              riverDischargeM3s: 50 + _rng.nextDouble() * 300,
-              riskScore: d.baseRiskScore.round().clamp(0, 100),
-              isHighRisk: d.baseRiskScore > 70,
-              alertLevel: d.baseRiskScore > 80
-                  ? DistrictAlertLevel.critical
-                  : d.baseRiskScore > 50
-                      ? DistrictAlertLevel.warning
-                      : DistrictAlertLevel.normal,
-            ))
-        .toList();
-    const reservoirs = [
-      ReservoirStatus(
-        damName: 'Idukki',
-        currentLevelM: 239.5,
-        capacityPct: 78.2,
-        status: DistrictAlertLevel.normal,
-        outflowM3s: 0,
-      ),
-      ReservoirStatus(
-        damName: 'Mullaperiyar',
-        currentLevelM: 136.2,
-        capacityPct: 85.0,
-        status: DistrictAlertLevel.warning,
-        outflowM3s: 150,
-      ),
-    ];
-    return KeralaLiveDashboard(
-      lastUpdated: DateTime.now(),
-      districts: districts,
-      reservoirs: reservoirs,
-    );
   }
 
   // ---------------------------------------------------------------------
@@ -622,13 +529,13 @@ class MockFloodOpsApi implements FloodOpsApi {
     final now = DateTime.now();
     final result = <ReportSummary>[];
     for (var i = 0; i < 9; i++) {
-      final district = KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
+      final district = NationalMetros.all[_rng.nextInt(NationalMetros.all.length)];
       final lat = district.center.latitude + (_rng.nextDouble() - 0.5) * 0.12;
       final lng = district.center.longitude + (_rng.nextDouble() - 0.5) * 0.12;
       final confirmCount = _rng.nextInt(3);
       result.add(ReportSummary(
         ticketId: 'SOS-${_uuid.v4().substring(0, 8).toUpperCase()}',
-        description: KeralaMockData.sosDescriptions[i % KeralaMockData.sosDescriptions.length],
+        description: NationalMockData.sosDescriptions[i % NationalMockData.sosDescriptions.length],
         latitude: lat,
         longitude: lng,
         distanceMeters: 200 + _rng.nextDouble() * 4800,
@@ -636,24 +543,13 @@ class MockFloodOpsApi implements FloodOpsApi {
         falseAlarmCount: _rng.nextInt(2),
         status: confirmCount >= 3 ? ReportStatus.verified : ReportStatus.pending,
         reportedAt: now.subtract(Duration(minutes: 5 + _rng.nextInt(600))),
-        reporterAlias: KeralaMockData.reporterAliases[i % KeralaMockData.reporterAliases.length],
+        reporterAlias: NationalMockData.reporterAliases[i % NationalMockData.reporterAliases.length],
       ));
     }
     return result;
   }
 
-  DistrictProfile _nearestDistrict(double lat, double lng) {
-    DistrictProfile nearest = KeralaDistricts.all.first;
-    double best = double.infinity;
-    for (final d in KeralaDistricts.all) {
-      final dist = _distanceMeters(lat, lng, d.center.latitude, d.center.longitude);
-      if (dist < best) {
-        best = dist;
-        nearest = d;
-      }
-    }
-    return nearest;
-  }
+  MetroProfile _nearestDistrict(double lat, double lng) => NationalMetros.nearest(lat, lng);
 
   double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
     const r = 6371000.0;
@@ -732,5 +628,257 @@ class MockFloodOpsApi implements FloodOpsApi {
     _dashboardTimer?.cancel();
     _dashboardController?.close();
     _incomingCallController.close();
+  }
+
+  // ---------------------------------------------------------------------
+  // 14-19. PS 26071 — inundation, routing, protocol, analytics, citizen ops
+  // ---------------------------------------------------------------------
+
+  static const Map<String, List<String>> _landmarksByCity = {
+    'Mumbai': ['Hindmata Junction Basin', 'Milan Subway Corridor', 'Gandhi Market (Kings Circle)', 'Sion Station Low-lying Road'],
+    'Chennai': ['Velachery Lake Catchment', 'Madipakkam Ward 188', 'T. Nagar Usman Road Underpass', 'Adyar River Floodplain'],
+    'Delhi': ['ITO Ring Road Underpass', 'Yamuna Bazar Ghat Area', 'Kashmere Gate ISBT Basin', 'Pragati Maidan Corridor'],
+    'Guwahati': ['Rukminigaon GS Road Axis', 'Anil Nagar Canal Overflow Basin', 'Nabin Nagar Low-elevation Sector', 'Zoo Road Downstream Ward'],
+    'Ernakulam': ['MG Road Metro Corridor', 'Railway Colony Basin', 'Kaloor Stadium Low-lying Ward', 'Central Broadway Market Ward'],
+  };
+
+  Map<String, dynamic> _polygon(double lat, double lon, double delta) => {
+        'type': 'Polygon',
+        'coordinates': [
+          [
+            [lon - delta, lat - delta],
+            [lon + delta, lat - delta],
+            [lon + delta, lat + delta],
+            [lon - delta, lat + delta],
+            [lon - delta, lat - delta],
+          ]
+        ],
+      };
+
+  @override
+  Future<InundationSimulationResponse> getInundationSimulation({
+    required String district,
+    required String scenario,
+  }) async {
+    await _delay(300, 700);
+    final metro = NationalMetros.byName(district);
+    final landmarks = _landmarksByCity[metro.name] ?? const [];
+    final lat = metro.center.latitude;
+    final lon = metro.center.longitude;
+    final extreme = scenario.toUpperCase() == 'EXTREME_EVENT';
+
+    final steps = extreme
+        ? [
+            (t: 'T+0h (Nowcast)', depth: 0.25, dbz: 39.5, rain: 28.0, delta: 0.007, sev: 'MODERATE', lm: landmarks.take(1).toList()),
+            (t: 'T+1h', depth: 0.75, dbz: 48.0, rain: 52.0, delta: 0.012, sev: 'HIGH', lm: landmarks.take(2).toList()),
+            (t: 'T+2h (Peak Inundation)', depth: 1.45, dbz: 54.2, rain: 72.0, delta: 0.018, sev: 'CRITICAL', lm: landmarks),
+            (t: 'T+3h (Receding)', depth: 0.85, dbz: 32.0, rain: 14.0, delta: 0.013, sev: 'HIGH', lm: landmarks.take(2).toList()),
+          ]
+        : [
+            (t: 'T+0h (Nowcast)', depth: 0.02, dbz: 18.0, rain: 1.0, delta: 0.003, sev: 'LOW', lm: <String>[]),
+            (t: 'T+1h', depth: 0.04, dbz: 22.0, rain: 2.5, delta: 0.003, sev: 'LOW', lm: <String>[]),
+            (t: 'T+2h', depth: 0.05, dbz: 20.0, rain: 2.0, delta: 0.003, sev: 'LOW', lm: <String>[]),
+            (t: 'T+3h', depth: 0.01, dbz: 15.0, rain: 0.5, delta: 0.003, sev: 'LOW', lm: <String>[]),
+          ];
+
+    final frames = steps
+        .map((s) => InundationFrame(
+              timeStep: s.t,
+              waterDepthMeters: s.depth,
+              radarDbz: s.dbz,
+              satelliteRainRateMmHr: s.rain,
+              severity: s.sev,
+              affectedLandmarks: s.lm,
+              geojsonGeometry: _polygon(lat, lon, s.delta),
+            ))
+        .toList();
+
+    final peak = extreme ? steps[2] : steps[0];
+    final zones = extreme
+        ? [
+            InundationPolygon(
+              zoneId: 'INUND-PEAK-${metro.name.substring(0, 3).toUpperCase()}-01',
+              severity: 'CRITICAL',
+              avgWaterDepthMeters: peak.depth,
+              affectedLandmarks: landmarks,
+              geojsonGeometry: _polygon(lat, lon, peak.delta),
+            ),
+          ]
+        : <InundationPolygon>[];
+
+    return InundationSimulationResponse(
+      timestamp: DateTime.now().toUtc().toIso8601String(),
+      district: metro.name,
+      leadTimeWarning: extreme ? '0 - 3 Hours Nowcast (Immediate Inundation Expected)' : 'No Extreme Inundation Threat Detected',
+      alertLevel: extreme ? 'RED' : 'GREEN',
+      telemetry: FourPillarTelemetry.fromJson({
+        'satellite': {
+          'source': 'INSAT-3DR (MOSDAC / ISRO)',
+          'cloud_top_temp_kelvin': extreme ? 201.8 : 265.0,
+          'rainfall_hydro_estimator_mm_hr': extreme ? 72.0 : 2.5,
+        },
+        'radar': {
+          'station': 'Doppler Weather Radar (DWR) ${metro.name}',
+          'reflectivity_dbz': extreme ? 54.2 : 22.0,
+          'echo_top_km': extreme ? 15.1 : 4.0,
+        },
+        'observational_weather': {
+          'station_id': 'IMD-AWS-${metro.name.substring(0, 3).toUpperCase()}-01',
+          'current_rainfall_mm_hr': extreme ? 72.0 : 1.5,
+          'cumulative_24h_rainfall_mm': extreme ? 188.4 : 10.0,
+        },
+        'numerical_weather_prediction': {
+          'model_name': 'NCMRWF Unified Model / WRF (4km)',
+          'forecast_lead_time_hours': 6,
+          'predicted_precipitation_mm': extreme ? 98.0 : 4.0,
+        },
+      }),
+      inundationZones: zones,
+      simulationFrames: frames,
+      advisoryBulletin: extreme
+          ? 'IMD HIGH-SEVERITY BULLETIN (${metro.name.toUpperCase()} METROPOLITAN AREA): Fused Doppler Radar and '
+              'INSAT-3DR imagery confirm intense convective storm activity. Peak street inundation of '
+              '${peak.depth}m projected across ${landmarks.take(2).join(', ')} at T+2h.'
+          : 'IMD NORMAL ADVISORY (${metro.name.toUpperCase()}): No convective cloudburst or road inundation conditions detected.',
+    );
+  }
+
+  @override
+  Future<BlockedNodesResponse> getBlockedNodes({required String zoneId}) async {
+    await _delay(200, 500);
+    final upper = zoneId.toUpperCase();
+    final metro = NationalMetros.all.firstWhere(
+      (m) => upper.contains(m.name.substring(0, 3).toUpperCase()),
+      orElse: () => NationalMetros.all.first,
+    );
+    final lat = metro.center.latitude;
+    final lon = metro.center.longitude;
+    return BlockedNodesResponse(
+      zoneId: zoneId,
+      blockedBoundingBoxes: [
+        BlockedBoundingBox(
+          minLat: lat - 0.01,
+          maxLat: lat - 0.002,
+          minLon: lon - 0.008,
+          maxLon: lon + 0.002,
+          description: '${_landmarksByCity[metro.name]?.first ?? 'Main corridor'} - Impassable',
+        ),
+      ],
+      action: 'Set graph node weights inside these bounding boxes to infinity.',
+    );
+  }
+
+  @override
+  Future<NdmaProtocolResponse> getNdmaProtocol({
+    required String district,
+    required String alertLevel,
+    double? radarDbz,
+    double? satelliteTempK,
+  }) async {
+    await _delay(300, 700);
+    final upper = alertLevel.toUpperCase();
+    if (upper == 'RED') {
+      return NdmaProtocolResponse(
+        district: district,
+        alertLevel: 'RED',
+        ragKnowledgeSource: 'NDMA Standard Guidelines on Urban Flooding & IMD Heavy Rainfall SOP 4.2',
+        meteorologicalTriggerSummary:
+            'Severe convective cloudburst detected. Radar reflectivity ${radarDbz ?? 53.2} dBZ indicates extreme precipitation over $district.',
+        actionableChecklist: [
+          '1. [IMD Protocol]: Activate District Emergency Operations Center (DEOC) for $district immediately.',
+          '2. [Power Grid]: Isolate power supply to low-lying electrical substations within the inundation bounding boxes.',
+          '3. [NDRF Deployment]: Pre-position NDRF rescue units and boats at identified bottleneck zones.',
+          '4. [Traffic Control]: Barricade and restrict vehicular entry into local underpasses and low-elevation corridors.',
+          '5. [Public Safety]: Open designated public relief camps and broadcast evacuation routes via SMS fallback.',
+        ],
+        evacuationPriority: 'CRITICAL - IMMEDIATE ACTION REQUIRED',
+      );
+    } else if (upper == 'ORANGE') {
+      return NdmaProtocolResponse(
+        district: district,
+        alertLevel: 'ORANGE',
+        ragKnowledgeSource: 'NDMA Guidelines on Urban Flooding Management (Section 3.5)',
+        meteorologicalTriggerSummary: 'Moderate-to-heavy rainfall warning. Elevated risk of waterlogging in low-elevation sectors.',
+        actionableChecklist: [
+          '1. Place municipal drainage pumping stations on high alert across $district.',
+          '2. Issue advisory warnings to local citizens via the mobile app and shelter networks.',
+          '3. Monitor live Doppler Radar and INSAT-3DR telemetry spikes.',
+        ],
+        evacuationPriority: 'ELEVATED PREPAREDNESS',
+      );
+    }
+    return NdmaProtocolResponse(
+      district: district,
+      alertLevel: 'GREEN',
+      ragKnowledgeSource: 'NDMA Guidelines on Urban Flooding Management (Section 2.1)',
+      meteorologicalTriggerSummary: 'Normal regional moisture levels. No heavy rainfall or convective cloudburst signatures.',
+      actionableChecklist: [
+        '1. Routine meteorological monitoring of $district telemetry feeds.',
+        '2. Ensure standard municipal canal cleaning schedules are maintained.',
+      ],
+      evacuationPriority: 'NORMAL MONITORING',
+    );
+  }
+
+  @override
+  Future<StormComparisonResponse> getStormComparison({required String district}) async {
+    await _delay(300, 700);
+    return StormComparisonResponse(
+      district: district,
+      currentStormName: 'Active Convective Cell (PS-26071 Fused Stream)',
+      currentPeakRainfallMmHr: 72.0,
+      currentMaxRadarDbz: 54.2,
+      currentHourlyTrend: const [15.0, 32.5, 52.0, 72.0, 48.0, 22.0],
+      historicalBenchmarks: const [
+        HistoricalStormBenchmark(
+          eventName: 'Mumbai Historic Cloudburst',
+          year: 2005,
+          peakRainfallMmHr: 94.0,
+          maxRadarDbz: 58.5,
+          hourlyTrend: [20.0, 45.0, 85.0, 94.0, 60.0, 30.0],
+        ),
+        HistoricalStormBenchmark(
+          eventName: 'Chennai Urban Flood Event',
+          year: 2015,
+          peakRainfallMmHr: 82.0,
+          maxRadarDbz: 52.0,
+          hourlyTrend: [10.0, 25.0, 65.0, 82.0, 55.0, 20.0],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<SmsBroadcastResult> broadcastEmergencySms({
+    required String district,
+    required String zoneId,
+    required String alertMessage,
+  }) async {
+    await _delay(500, 1200);
+    return SmsBroadcastResult(
+      status: 'SUCCESS',
+      broadcastTimestamp: DateTime.now().toUtc().toIso8601String(),
+      targetedDistrict: district,
+      simulatedSmsRecipientsCount: 14280,
+      sampleRecipients: const ['+91-98765XXXXX', '+91-91234XXXXX', '+91-99887XXXXX'],
+      fallbackMode: 'Cellular Gateway Emergency Broadcast (Cell Broadcast / Offline SMS Fallback)',
+    );
+  }
+
+  @override
+  Future<GroundTruthReportResult> submitGroundTruth({
+    required String district,
+    required double lat,
+    required double lng,
+    required double observedWaterDepthMeters,
+    required String description,
+  }) async {
+    await _delay(400, 900);
+    return GroundTruthReportResult(
+      status: 'VERIFIED_LOGGED',
+      reportId: 'GT-REP-${DateTime.now().millisecondsSinceEpoch % 1000000}',
+      receivedTimestamp: DateTime.now().toUtc().toIso8601String(),
+      message: 'Observation recorded successfully for $district. Forwarded to IMD Predictor validation pipeline.',
+    );
   }
 }

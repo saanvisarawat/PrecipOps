@@ -34,6 +34,22 @@ abstract class RoutingService {
     required TravelMode mode,
     bool avoidHighways = false,
   });
+
+  /// Evacuation routing that steers around flooded streets. Backed by
+  /// GET /api/v1/routing/blocked-nodes: the caller resolves the zone's
+  /// bounding boxes into an [isBlocked] predicate (`node.lat/lon` inside
+  /// any box), and this asks OSRM for every alternative it has, then picks
+  /// the shortest one whose polyline never enters a blocked box — the same
+  /// "mark blocked, then run Dijkstra" idea the backend spec describes,
+  /// applied to this app's actual routing graph (OSRM's candidate routes,
+  /// not raw street-intersection nodes, since there is no local street
+  /// graph to walk). Falls back to the least-blocked candidate (flagged via
+  /// [RouteOption.crossesBlockedZone]) if every alternative crosses one.
+  Future<RouteOption> getRouteAvoidingBlocked({
+    required List<LatLng> waypoints,
+    required TravelMode mode,
+    required bool Function(LatLng point) isBlocked,
+  });
 }
 
 /// Real turn-by-turn routing against the public OSRM mirrors hosted at
@@ -79,6 +95,82 @@ class OsrmRoutingService implements RoutingService {
     } on DioException catch (e) {
       throw RouteCalculationException(e.message ?? 'Routing service unreachable.');
     }
+  }
+
+  @override
+  Future<RouteOption> getRouteAvoidingBlocked({
+    required List<LatLng> waypoints,
+    required TravelMode mode,
+    required bool Function(LatLng point) isBlocked,
+  }) async {
+    if (!mode.isAvailable) throw TravelModeUnavailableException(mode);
+    if (waypoints.length < 2) throw const RouteCalculationException('Need an origin and a destination.');
+
+    final coords = waypoints.map((p) => '${p.longitude},${p.latitude}').join(';');
+    final url = '$_baseUrl/routed-${_subdomain(mode)}/route/v1/${mode.osrmProfile}/$coords';
+
+    try {
+      final response = await _dio.get(url, queryParameters: {
+        'overview': 'full',
+        'geometries': 'geojson',
+        'steps': 'true',
+        'alternatives': 'true',
+      });
+
+      final data = response.data as Map<String, dynamic>;
+      if (data['code'] != 'Ok') {
+        throw RouteCalculationException(data['message'] as String? ?? 'No route found.');
+      }
+
+      final routes = (data['routes'] as List).cast<Map<String, dynamic>>();
+      final options = routes.map((r) => _toRouteOption(r)).toList();
+      return _shortestAvoidingBlocked(options, isBlocked);
+    } on DioException catch (e) {
+      throw RouteCalculationException(e.message ?? 'Routing service unreachable.');
+    }
+  }
+
+  /// Same start/end Dijkstra graph `_shortest` already builds to pick among
+  /// OSRM's candidates — except a candidate whose polyline enters a
+  /// blocked box gets an infinite edge weight instead of half its real
+  /// distance, so the shortest path through this graph is, by construction,
+  /// the shortest candidate that never touches flooded ground. If every
+  /// candidate is blocked, the least-blocked one is returned instead of
+  /// throwing, flagged via [RouteOption.crossesBlockedZone].
+  RouteOption _shortestAvoidingBlocked(List<RouteOption> options, bool Function(LatLng) isBlocked) {
+    final blockedFlags = <String, bool>{};
+    final graph = Dijkstra();
+    for (final o in options) {
+      final blocked = o.points.any(isBlocked);
+      blockedFlags[o.id] = blocked;
+      final weight = blocked ? double.infinity : o.distanceMeters / 2;
+      graph.addEdge('start', o.id, weight);
+      graph.addEdge(o.id, 'end', weight);
+    }
+    final result = graph.shortestPath('start', 'end');
+
+    String chosenId;
+    if (result != null && result.path.length >= 2 && result.distance.isFinite) {
+      chosenId = result.path[1];
+    } else {
+      // Every candidate crosses a blocked box — fall back to whichever
+      // intersects the fewest points, and flag it below.
+      final sorted = [...options]..sort(
+          (a, b) => a.points.where(isBlocked).length.compareTo(b.points.where(isBlocked).length));
+      chosenId = sorted.first.id;
+    }
+
+    final chosen = options.firstWhere((o) => o.id == chosenId, orElse: () => options.first);
+    return RouteOption(
+      id: chosen.id,
+      rank: RouteRank.suggested,
+      points: chosen.points,
+      distanceMeters: chosen.distanceMeters,
+      duration: chosen.duration,
+      steps: chosen.steps,
+      isOfflineEstimate: chosen.isOfflineEstimate,
+      crossesBlockedZone: blockedFlags[chosen.id] ?? false,
+    );
   }
 
   String _subdomain(TravelMode mode) {
@@ -206,6 +298,25 @@ class StraightLineRoutingService implements RoutingService {
       ),
     ];
   }
+
+  @override
+  Future<RouteOption> getRouteAvoidingBlocked({
+    required List<LatLng> waypoints,
+    required TravelMode mode,
+    required bool Function(LatLng point) isBlocked,
+  }) async {
+    final route = (await getRoutes(waypoints: waypoints, mode: mode)).first;
+    return RouteOption(
+      id: route.id,
+      rank: route.rank,
+      points: route.points,
+      distanceMeters: route.distanceMeters,
+      duration: route.duration,
+      steps: route.steps,
+      isOfflineEstimate: true,
+      crossesBlockedZone: route.points.any(isBlocked),
+    );
+  }
 }
 
 /// Picks OSRM when online, falls back to the straight-line estimate when
@@ -234,6 +345,21 @@ class HybridRoutingService implements RoutingService {
       return await _online.getRoutes(waypoints: waypoints, mode: mode, avoidHighways: avoidHighways);
     } catch (_) {
       return _offline.getRoutes(waypoints: waypoints, mode: mode);
+    }
+  }
+
+  @override
+  Future<RouteOption> getRouteAvoidingBlocked({
+    required List<LatLng> waypoints,
+    required TravelMode mode,
+    required bool Function(LatLng point) isBlocked,
+  }) async {
+    if (!mode.isAvailable) throw TravelModeUnavailableException(mode);
+    if (!isOnline()) return _offline.getRouteAvoidingBlocked(waypoints: waypoints, mode: mode, isBlocked: isBlocked);
+    try {
+      return await _online.getRouteAvoidingBlocked(waypoints: waypoints, mode: mode, isBlocked: isBlocked);
+    } catch (_) {
+      return _offline.getRouteAvoidingBlocked(waypoints: waypoints, mode: mode, isBlocked: isBlocked);
     }
   }
 }

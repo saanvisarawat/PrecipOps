@@ -32,7 +32,7 @@ class _VerificationFeedScreenState extends ConsumerState<VerificationFeedScreen>
   }
 
   Future<void> _load() async {
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     double? lat;
     double? lng;
     try {
@@ -55,7 +55,7 @@ class _VerificationFeedScreenState extends ConsumerState<VerificationFeedScreen>
   }
 
   Future<void> _vote(ReportSummary report, VerifyVote vote) async {
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     ReportSummary? updated;
     try {
       updated = await api.verifyReport(report.ticketId, vote);

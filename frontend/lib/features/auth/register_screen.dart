@@ -21,7 +21,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  UserRole _role = UserRole.volunteer;
+  UserRole _role = UserRole.citizen;
 
   @override
   void dispose() {
@@ -76,6 +76,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               const SizedBox(height: AppSpacing.compact),
               Row(
                 children: [
+                  Expanded(
+                    child: _RoleTile(
+                      icon: Icons.person_outline,
+                      label: 'Citizen',
+                      selected: _role == UserRole.citizen,
+                      onTap: () => setState(() => _role = UserRole.citizen),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: _RoleTile(
                       icon: Icons.volunteer_activism_outlined,

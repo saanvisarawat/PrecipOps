@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/models/agent_hub_models.dart';
 import '../../api/models/auth_models.dart';
-import '../../core/constants/kerala_districts.dart';
+import '../../core/constants/national_metros.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
@@ -39,7 +39,7 @@ class AgentHubScreen extends ConsumerStatefulWidget {
 }
 
 class _AgentHubScreenState extends ConsumerState<AgentHubScreen> {
-  String _district = KeralaDistricts.all.first.name;
+  String _district = NationalMetros.all.first.name;
   AgentHubResponse? _result;
   bool _loading = false;
   bool _showTechnicalDetail = false;
@@ -51,7 +51,7 @@ class _AgentHubScreenState extends ConsumerState<AgentHubScreen> {
       _result = null;
       _decision = _Decision.none;
     });
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     AgentHubResponse? res;
     try {
       res = await api.runAgentHubAnalysis(_district);
