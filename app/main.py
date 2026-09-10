@@ -3,6 +3,14 @@ import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
+from app.routers import routing
+from app.routers import analytics
+from app.routers import ps71
+from app.routers import inundation
+from app.routers import citizen_ops
+
+from app.routers import protocol
+
 import base64
 import io
 from fastapi.responses import StreamingResponse
@@ -256,6 +264,13 @@ app.add_middleware(
 # 404 with no route registered for it at all.
 from .agents import router as agents_router
 app.include_router(agents_router)
+
+app.include_router(ps71.router, prefix="/api/v1", tags=["PS 71 Inundation"])
+app.include_router(inundation.router, prefix="/api/v1")
+app.include_router(routing.router, prefix="/api/v1")
+app.include_router(protocol.router, prefix="/api/v1")
+app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(citizen_ops.router, prefix="/api/v1")
 
 class ConnectionManager:
     def __init__(self):

@@ -108,3 +108,22 @@ class AgentRunLogResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+    # --- ADD AT THE BOTTOM OF app/schemas.py ---
+
+class InundationPolygon(BaseModel):
+    zone_id: str
+    severity: str  # "MODERATE", "CRITICAL", "EXTREME"
+    avg_water_depth_meters: float
+    affected_landmarks: List[str]
+    geojson_geometry: Dict[str, Any]
+
+class PS71PredictionResponse(BaseModel):
+    timestamp: str
+    district: str
+    lead_time_warning: str
+    alert_level: str  # "GREEN", "ORANGE", "RED"
+    meteorological_inputs: Dict[str, Any]
+    inundation_zones: List[InundationPolygon]
+    advisory_bulletin: str
