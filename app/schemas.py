@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 
 from .models import UserRole
@@ -8,7 +8,7 @@ class ReportCreate(BaseModel):
     description: str
     latitude: float
     longitude: float
-    user_id: int  # For now, we manually pass the user ID until we set up login
+    # user_id removed so the Flutter app does not throw 422 errors
 
 class ReportVerify(BaseModel):
     is_verified: bool
@@ -17,7 +17,8 @@ class UserCreate(BaseModel):
     full_name: str
     email: str
     password: str
-    role: UserRole = UserRole.citizen
+    # Strictly aligned with the PrecipOps PPT roles (excluding predictor for security)
+    role: Literal["citizen", "responder"] = "citizen"
 
 class UserLogin(BaseModel):
     email: str
@@ -31,6 +32,7 @@ class BulkReportItem(BaseModel):
 
 class BulkReportUpload(BaseModel):
     reports: List[BulkReportItem]
+
 class RiskPredictionRequest(BaseModel):
     rainfall_mm: float
     river_discharge: float
@@ -48,6 +50,7 @@ class RiskPredictionRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
+    language: str = "english"  # Triggers Malayalam translation
 
 class VolunteerLocationUpdate(BaseModel):
     latitude: float
@@ -109,8 +112,7 @@ class AgentRunLogResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
-    # --- ADD AT THE BOTTOM OF app/schemas.py ---
+# --- ADD AT THE BOTTOM OF app/schemas.py ---
 
 class InundationPolygon(BaseModel):
     zone_id: str

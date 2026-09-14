@@ -3,9 +3,6 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-
-
-
 router = APIRouter(prefix="/inundation", tags=["PS 26071 Inundation & Early Warning"])
 
 # --- Pydantic Schemas for Multi-Time Simulation ---
@@ -121,18 +118,8 @@ def build_geojson_polygon(lon: float, lat: float, delta: float) -> Dict[str, Any
     }
 
 
-# Endpoints: Both `/predict` and `/simulate` point to the same handler for compatibility
-@router.get("/predict", response_model=PS71SimulationResponse)
-@router.get("/simulate", response_model=PS71SimulationResponse)
-
-@router.get("/predict", response_model=PS71SimulationResponse)
-@router.get("/simulate", response_model=PS71SimulationResponse)
-@router.get("/heavy-rainfall/predict", response_model=PS71SimulationResponse)
-
-async def get_heavy_rainfall_and_inundation(
-    district: str = Query("Mumbai", description="Select city: Mumbai, Delhi, Chennai, Kolkata, Guwahati, Ernakulam"),
-    scenario: str = Query("EXTREME_EVENT", description="Toggle 'NORMAL' or 'EXTREME_EVENT'")
-):
+# Shared business logic
+async def _execute_inundation_pipeline(district: str, scenario: str) -> PS71SimulationResponse:
     now = datetime.datetime.utcnow().isoformat() + "Z"
 
     # 1. Match city profile or fallback to Mumbai
@@ -145,7 +132,6 @@ async def get_heavy_rainfall_and_inundation(
         alert = "RED"
         lead_time = "0 - 3 Hours Nowcast (Immediate Inundation Expected)"
         
-        # 4-stage cloudburst and inundation spread
         simulation_steps = [
             {
                 "t": "T+0h (Nowcast)",
@@ -334,3 +320,29 @@ async def get_heavy_rainfall_and_inundation(
         simulation_frames=frames,
         advisory_bulletin=bulletin
     )
+
+
+# --- Dedicated Route Handlers with Unique Operation IDs ---
+
+@router.get("/predict", response_model=PS71SimulationResponse, operation_id="predict_inundation_endpoint")
+async def predict_inundation(
+    district: str = Query("Mumbai", description="Select city: Mumbai, Delhi, Chennai, Kolkata, Guwahati, Ernakulam"),
+    scenario: str = Query("EXTREME_EVENT", description="Toggle 'NORMAL' or 'EXTREME_EVENT'")
+):
+    return await _execute_inundation_pipeline(district, scenario)
+
+
+@router.get("/simulate", response_model=PS71SimulationResponse, operation_id="simulate_inundation_endpoint")
+async def simulate_inundation(
+    district: str = Query("Mumbai", description="Select city: Mumbai, Delhi, Chennai, Kolkata, Guwahati, Ernakulam"),
+    scenario: str = Query("EXTREME_EVENT", description="Toggle 'NORMAL' or 'EXTREME_EVENT'")
+):
+    return await _execute_inundation_pipeline(district, scenario)
+
+
+@router.get("/heavy-rainfall/predict", response_model=PS71SimulationResponse, operation_id="predict_heavy_rainfall_endpoint")
+async def predict_heavy_rainfall(
+    district: str = Query("Mumbai", description="Select city: Mumbai, Delhi, Chennai, Kolkata, Guwahati, Ernakulam"),
+    scenario: str = Query("EXTREME_EVENT", description="Toggle 'NORMAL' or 'EXTREME_EVENT'")
+):
+    return await _execute_inundation_pipeline(district, scenario)

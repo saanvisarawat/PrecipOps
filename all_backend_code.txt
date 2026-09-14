@@ -1,4 +1,459 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from app.database import get_db
+from app.schemas import AgentRunLogResponse
+from app.agent_manager import run_floodops_agents
+
+router = APIRouter(prefix="/api/agents", tags=["Agents"])
+
+class AgentTriggerPayload(BaseModel):
+    district: str
+    incident_data: str
+
+@router.post("/trigger", response_model=AgentRunLogResponse)
+def trigger_agent_workflow(payload: AgentTriggerPayload, db: Session = Depends(get_db)):
+    try:
+        log_record = run_floodops_agents(db, payload.district, payload.incident_data)
+        return log_record
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))import os
+import uuid
+import json
 import datetime
+import google.generativeai as genai
+from sqlalchemy.orm import Session
+from .models import AgentRunLog, AlertRecord
+
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+llm = genai.GenerativeModel('gemini-3.5-flash')
+
+def run_floodops_agents(db: Session, district: str, incident_data: str):
+    run_id = str(uuid.uuid4())
+    execution_chain = []
+    
+    try:
+        prompt_1 = f"Analyze flood data for {district}: {incident_data}. Output a strict threat level assessment in 2 sentences."
+        response_1 = llm.generate_content(prompt_1).text
+        execution_chain.append({"agent": "Risk Analyst", "output": response_1})
+        prompt_2 = f"Based on this analyst report: {response_1}, allocate specific rescue units, boats, and shelters for {district}."
+        response_2 = llm.generate_content(prompt_2).text
+        execution_chain.append({"agent": "Resource Allocator", "output": response_2})
+        prompt_3 = (
+            f"Turn this allocation plan into a rapid public SMS alert: {response_2}. "
+            "Respond ONLY with a valid JSON object containing exactly these keys: "
+            "'alert_level' (CRITICAL, HIGH, or MODERATE), 'message' (the 1-sentence SMS), and 'helpline' (a generic 4-digit number like 1070)."
+        )
+        response_3 = llm.generate_content(prompt_3).text
+        clean_json_str = response_3.replace("```json", "").replace("```", "").strip()
+        comms_data = json.loads(clean_json_str)
+        execution_chain.append({"agent": "Communications", "output": comms_data})
+        new_alert = AlertRecord(
+            district=district,
+            alert_level=comms_data.get("alert_level", "HIGH"),
+            message=comms_data.get("message", "Emergency alert generated."),
+            helpline=comms_data.get("helpline", "1070")
+        )
+        db.add(new_alert)
+        prompt_4 = f"Summarize the operation for {district} into a 3-bullet executive summary based on the allocations."
+        final_summary = llm.generate_content(prompt_4).text
+        execution_chain.append({"agent": "Coordinator", "output": final_summary})
+        new_log = AgentRunLog(
+            run_id=run_id,
+            district=district,
+            status="SUCCESS",
+            coordinator_summary=final_summary,
+            execution_chain=execution_chain,
+            created_at=datetime.datetime.utcnow()
+        )
+        db.add(new_log)
+        db.commit()
+        db.refresh(new_log)
+        
+        return new_log
+
+    except Exception as e:
+        db.rollback()
+        error_log = AgentRunLog(
+            run_id=run_id,
+            district=district,
+            status="FAILED",
+            coordinator_summary=f"Agent chain failed: {str(e)}",
+            execution_chain=execution_chain,
+            created_at=datetime.datetime.utcnow()
+        )
+        db.add(error_log)
+        db.commit()
+        raise eimport os
+from datetime import datetime, timedelta
+from typing import Optional, List, Any
+from jose import JWTError, jwt
+import bcrypt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
+from .database import get_db
+from . import models
+
+# --- Secret & Algorithm Configuration ---
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "floodops_super_secret_hackathon_key_2026")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 Hours
+
+# --- PS 26071 Role Constants ---
+ROLE_PREDICTOR = "PREDICTOR"   # IMD Meteorologists & MoES Scientists
+ROLE_RESPONDER = "RESPONDER"   # District Magistrates, NDMA, NDRF
+ROLE_CITIZEN = "CITIZEN"       # General Public & Field Volunteers
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)
+
+
+def hash_password(password: str) -> str:
+    pwd_bytes = password.encode('utf-8')[:72]
+    hashed = bcrypt.hashpw(pwd_bytes, bcrypt.gensalt())
+    return hashed.decode('utf-8')
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    pwd_bytes = plain_password.encode('utf-8')[:72]
+    return bcrypt.checkpw(pwd_bytes, hashed_password.encode('utf-8'))
+
+
+def create_access_token(data: dict) -> str:
+    """Encodes user identity, email, and explicit PS 26071 role into the JWT payload."""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _normalize_role(role_val: Any) -> str:
+    """Helper to convert Enum or string role into standardized uppercase format."""
+    if role_val is None:
+        return ROLE_CITIZEN
+    val = role_val.value if hasattr(role_val, 'value') else str(role_val)
+    val_upper = val.strip().upper()
+    
+    # Map old FloodOps roles to the new 3-tier hierarchy
+    if val_upper in ["OFFICIAL", "ADMIN", "PREDICTOR"]:
+        return ROLE_PREDICTOR
+    elif val_upper in ["VOLUNTEER", "RESPONDER"]:
+        return ROLE_RESPONDER
+    return ROLE_CITIZEN
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: Optional[str] = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+) -> Optional[models.User]:
+    """Allows guest access while recognizing signed-in accounts if a token is present."""
+    if token is None:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: Optional[str] = payload.get("sub")
+        if email is None:
+            return None
+    except JWTError:
+        return None
+    return db.query(models.User).filter(models.User.email == email).first()
+
+
+# --- Role-Based Access Control (RBAC) Dependencies ---
+
+def require_predictor(current_user: models.User = Depends(get_current_user)):
+    """Gate for IMD Meteorologists & MoES Data Analysts."""
+    user_role = _normalize_role(getattr(current_user, "role", None))
+    if user_role != ROLE_PREDICTOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted: IMD Meteorologists and MoES Officials only."
+        )
+    return current_user
+
+
+def require_responder(current_user: models.User = Depends(get_current_user)):
+    """Gate for Disaster Management, District Magistrates, and NDRF."""
+    user_role = _normalize_role(getattr(current_user, "role", None))
+    if user_role not in [ROLE_RESPONDER, ROLE_PREDICTOR]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted: Disaster Responders and Emergency Officials only."
+        )
+    return current_user
+
+
+# Legacy aliases preserved for backward compatibility
+def require_official(current_user: models.User = Depends(get_current_user)):
+    return require_responder(current_user)
+
+
+def require_volunteer(current_user: models.User = Depends(get_current_user)):
+    return current_userimport os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+from dotenv import load_dotenv
+load_dotenv()
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()import asyncio
+import httpx
+from bs4 import BeautifulSoup
+
+kerala_live_cache = {
+    "last_updated": None,
+    "districts": {},
+    "reservoirs": []
+}
+
+KERALA_DISTRICTS = {
+    "Thiruvananthapuram": {"lat": 8.52, "lon": 76.93},
+    "Kollam": {"lat": 8.89, "lon": 76.61},
+    "Pathanamthitta": {"lat": 9.26, "lon": 76.78},
+    "Alappuzha": {"lat": 9.49, "lon": 76.33},
+    "Kottayam": {"lat": 9.59, "lon": 76.52},
+    "Idukki": {"lat": 9.85, "lon": 76.94},
+    "Ernakulam": {"lat": 9.98, "lon": 76.28},
+    "Thrissur": {"lat": 10.52, "lon": 76.21},
+    "Palakkad": {"lat": 10.78, "lon": 76.65},
+    "Malappuram": {"lat": 11.07, "lon": 76.07},
+    "Kozhikode": {"lat": 11.25, "lon": 75.78},
+    "Wayanad": {"lat": 11.68, "lon": 76.13},
+    "Kannur": {"lat": 11.87, "lon": 75.37},
+    "Kasaragod": {"lat": 12.49, "lon": 74.98}
+}
+
+async def fetch_open_meteo_data():
+    """
+    Fetches real-time weather & discharge data from Open-Meteo, 
+    or supplies an active monsoon demo state when enabled.
+    """
+    DEMO_MONSOON_MODE = False  # Set to False to hit live Open-Meteo API endpoints
+
+    if DEMO_MONSOON_MODE:
+        return {
+            "Alappuzha": {
+                "rainfall_mm": 115.0, "rainfall_mm_3d_sum": 310.0, "rainfall_mm_7d_sum": 580.0, "rainfall_mm_15d_sum": 790.0,
+                "river_discharge": 780.0, "river_discharge_m3s": 780.0, "river_discharge_3d_sum": 2100.0, "river_discharge_7d_sum": 4500.0, "river_discharge_15d_sum": 7800.0
+            },
+            "Ernakulam": {
+                "rainfall_mm": 130.0, "rainfall_mm_3d_sum": 340.0, "rainfall_mm_7d_sum": 620.0, "rainfall_mm_15d_sum": 840.0,
+                "river_discharge": 890.0, "river_discharge_m3s": 890.0, "river_discharge_3d_sum": 2400.0, "river_discharge_7d_sum": 5100.0, "river_discharge_15d_sum": 8800.0
+            },
+            "Kottayam": {
+                "rainfall_mm": 105.0, "rainfall_mm_3d_sum": 280.0, "rainfall_mm_7d_sum": 520.0, "rainfall_mm_15d_sum": 710.0,
+                "river_discharge": 650.0, "river_discharge_m3s": 650.0, "river_discharge_3d_sum": 1800.0, "river_discharge_7d_sum": 3900.0, "river_discharge_15d_sum": 6700.0
+            },
+            "Idukki": {
+                "rainfall_mm": 95.0, "rainfall_mm_3d_sum": 250.0, "rainfall_mm_7d_sum": 480.0, "rainfall_mm_15d_sum": 650.0,
+                "river_discharge": 420.0, "river_discharge_m3s": 420.0, "river_discharge_3d_sum": 1200.0, "river_discharge_7d_sum": 2600.0, "river_discharge_15d_sum": 4600.0
+            },
+            "Wayanad": {
+                "rainfall_mm": 88.0, "rainfall_mm_3d_sum": 230.0, "rainfall_mm_7d_sum": 440.0, "rainfall_mm_15d_sum": 610.0,
+                "river_discharge": 380.0, "river_discharge_m3s": 380.0, "river_discharge_3d_sum": 1050.0, "river_discharge_7d_sum": 2300.0, "river_discharge_15d_sum": 4100.0
+            },
+            "Thrissur": {
+                "rainfall_mm": 70.0, "rainfall_mm_3d_sum": 180.0, "rainfall_mm_7d_sum": 360.0, "rainfall_mm_15d_sum": 510.0,
+                "river_discharge": 210.0, "river_discharge_m3s": 210.0, "river_discharge_3d_sum": 600.0, "river_discharge_7d_sum": 1300.0, "river_discharge_15d_sum": 2400.0
+            },
+            "Pathanamthitta": {
+                "rainfall_mm": 60.0, "rainfall_mm_3d_sum": 160.0, "rainfall_mm_7d_sum": 320.0, "rainfall_mm_15d_sum": 460.0,
+                "river_discharge": 190.0, "river_discharge_m3s": 190.0, "river_discharge_3d_sum": 520.0, "river_discharge_7d_sum": 1150.0, "river_discharge_15d_sum": 2100.0
+            },
+            "Malappuram": {
+                "rainfall_mm": 40.0, "rainfall_mm_3d_sum": 110.0, "rainfall_mm_7d_sum": 220.0, "rainfall_mm_15d_sum": 340.0,
+                "river_discharge": 80.0, "river_discharge_m3s": 80.0, "river_discharge_3d_sum": 230.0, "river_discharge_7d_sum": 510.0, "river_discharge_15d_sum": 980.0
+            },
+            "Kozhikode": {
+                "rainfall_mm": 35.0, "rainfall_mm_3d_sum": 95.0, "rainfall_mm_7d_sum": 190.0, "rainfall_mm_15d_sum": 300.0,
+                "river_discharge": 60.0, "river_discharge_m3s": 60.0, "river_discharge_3d_sum": 170.0, "river_discharge_7d_sum": 380.0, "river_discharge_15d_sum": 750.0
+            },
+            "Kannur": {
+                "rainfall_mm": 25.0, "rainfall_mm_3d_sum": 70.0, "rainfall_mm_7d_sum": 140.0, "rainfall_mm_15d_sum": 220.0,
+                "river_discharge": 45.0, "river_discharge_m3s": 45.0, "river_discharge_3d_sum": 125.0, "river_discharge_7d_sum": 280.0, "river_discharge_15d_sum": 540.0
+            },
+            "Kasaragod": {
+                "rainfall_mm": 20.0, "rainfall_mm_3d_sum": 55.0, "rainfall_mm_7d_sum": 115.0, "rainfall_mm_15d_sum": 180.0,
+                "river_discharge": 40.0, "river_discharge_m3s": 40.0, "river_discharge_3d_sum": 110.0, "river_discharge_7d_sum": 250.0, "river_discharge_15d_sum": 480.0
+            },
+            "Palakkad": {
+                "rainfall_mm": 18.0, "rainfall_mm_3d_sum": 48.0, "rainfall_mm_7d_sum": 98.0, "rainfall_mm_15d_sum": 160.0,
+                "river_discharge": 45.0, "river_discharge_m3s": 45.0, "river_discharge_3d_sum": 120.0, "river_discharge_7d_sum": 270.0, "river_discharge_15d_sum": 510.0
+            },
+            "Kollam": {
+                "rainfall_mm": 15.0, "rainfall_mm_3d_sum": 40.0, "rainfall_mm_7d_sum": 85.0, "rainfall_mm_15d_sum": 140.0,
+                "river_discharge": 35.0, "river_discharge_m3s": 35.0, "river_discharge_3d_sum": 95.0, "river_discharge_7d_sum": 210.0, "river_discharge_15d_sum": 410.0
+            },
+            "Thiruvananthapuram": {
+                "rainfall_mm": 12.0, "rainfall_mm_3d_sum": 32.0, "rainfall_mm_7d_sum": 70.0, "rainfall_mm_15d_sum": 120.0,
+                "river_discharge": 30.0, "river_discharge_m3s": 30.0, "river_discharge_3d_sum": 80.0, "river_discharge_7d_sum": 180.0, "river_discharge_15d_sum": 350.0
+            }
+        }
+
+    weather_url = "https://api.open-meteo.com/v1/forecast"
+    flood_url = "https://flood-api.open-meteo.com/v1/flood"
+    results = {}
+    
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for district, coords in KERALA_DISTRICTS.items():
+            try:
+                weather_res = await client.get(
+                    weather_url,
+                    params={
+                        "latitude": coords["lat"],
+                        "longitude": coords["lon"],
+                        "daily": "precipitation_sum",
+                        "past_days": 15,
+                        "forecast_days": 1,
+                        "timezone": "auto"
+                    }
+                )
+                flood_res = await client.get(
+                    flood_url,
+                    params={
+                        "latitude": coords["lat"],
+                        "longitude": coords["lon"],
+                        "daily": "river_discharge",
+                        "past_days": 15,
+                        "forecast_days": 1
+                    }
+                )
+                weather_res.raise_for_status()
+                flood_res.raise_for_status()
+
+                daily_weather = weather_res.json().get("daily") or {}
+                daily_flood = flood_res.json().get("daily") or {}
+                precip_history = daily_weather.get("precipitation_sum") or [0.0] * 16
+                discharge_history = daily_flood.get("river_discharge") or [0.0] * 16
+
+                precip_history = [float(x) if x is not None else 0.0 for x in precip_history]
+                discharge_history = [float(x) if x is not None else 0.0 for x in discharge_history]
+
+                if not any(precip_history):
+                    # A 200 with an empty/all-null precipitation series — seen when a
+                    # 14-district back-to-back burst gets silently rate-limited by
+                    # Open-Meteo without a non-2xx status. Treat it as a failure so it
+                    # falls through to the static per-district baseline below instead
+                    # of reporting zero rain (and therefore floor-band risk) everywhere.
+                    raise ValueError(f"empty precipitation series for {district}")
+
+                results[district] = {
+                    "rainfall_mm": precip_history[-1],
+                    "rainfall_mm_3d_sum": sum(precip_history[-3:]),
+                    "rainfall_mm_7d_sum": sum(precip_history[-7:]),
+                    "rainfall_mm_15d_sum": sum(precip_history[-15:]),
+                    "river_discharge": discharge_history[-1],
+                    "river_discharge_m3s": discharge_history[-1],
+                    "river_discharge_3d_sum": sum(discharge_history[-3:]),
+                    "river_discharge_7d_sum": sum(discharge_history[-7:]),
+                    "river_discharge_15d_sum": sum(discharge_history[-15:])
+                }
+            except Exception as e:
+                print(f"Failed to fetch Meteo data for {district}: {e}")
+                results[district] = {
+                    "rainfall_mm": 0.0, "rainfall_mm_3d_sum": 0.0, "rainfall_mm_7d_sum": 0.0,
+                    # rainfall_mm_15d_sum intentionally omitted: main.py falls back to
+                    # this district's static baseline (base["rain_15d_sum"]) only when
+                    # the key is absent — forcing it to 0.0 here defeated that fallback
+                    # and was why every district floored to the same risk score during
+                    # a live-data outage.
+                    "river_discharge": 0.0, "river_discharge_m3s": 0.0, "river_discharge_3d_sum": 0.0, "river_discharge_7d_sum": 0.0, "river_discharge_15d_sum": 0.0
+                }
+            await asyncio.sleep(0.15)  # stagger requests to avoid bursting Open-Meteo
+
+    return results
+
+async def scrape_kseb_dam_levels():
+    scraped_dams = [
+        {"dam_name": "Idukki", "current_level_m": 239.5, "capacity_pct": 78.2, "status": "NORMAL", "outflow_m3s": 0},
+        {"dam_name": "Mullaperiyar", "current_level_m": 136.2, "capacity_pct": 85.0, "status": "WARNING", "outflow_m3s": 150}
+    ]
+    
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        async with httpx.AsyncClient(verify=False, follow_redirects=True) as client:
+            res = await client.get("https://sldckerala.com/index.php?id=7", headers=headers, timeout=10.0)
+            
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                table = soup.find('table')
+                if table:
+                    live_data = []
+                    rows = table.find_all('tr')
+                    target_dams = ["IDUKKI", "PAMBA", "SHOLAYAR", "IDAMALAYAR", "KUTTIADI"]
+                    
+                    for row in rows:
+                        cols = row.find_all(['td', 'th'])
+                        row_text = " ".join([c.text.strip().upper() for c in cols])
+                        
+                        for dam in target_dams:
+                            if dam in row_text and len(cols) >= 4:
+                                try:
+                                    texts = [c.text.strip() for c in cols if c.text.strip()]
+                                    level_val = 0.0
+                                    pct_val = 0.0
+                                    
+                                    for t in texts:
+                                        cleaned = t.replace('%', '').strip()
+                                        try:
+                                            val = float(cleaned)
+                                            if 10 < val < 3000 and level_val == 0.0:
+                                                level_val = val
+                                            elif 0 <= val <= 100 and pct_val == 0.0 and val != level_val:
+                                                pct_val = val
+                                        except ValueError:
+                                            continue
+                                            
+                                    if level_val > 0:
+                                        live_data.append({
+                                            "dam_name": dam.capitalize(),
+                                            "current_level_m": level_val,
+                                            "capacity_pct": pct_val if pct_val > 0 else 50.0,
+                                            "status": "CRITICAL" if pct_val > 90 else "WARNING" if pct_val > 75 else "NORMAL",
+                                            "outflow_m3s": 0.0
+                                        })
+                                except Exception:
+                                    continue
+                                    
+                    if len(live_data) > 0:
+                        unique_dams = {d["dam_name"]: d for d in live_data}.values()
+                        scraped_dams = list(unique_dams)
+                        print("✅ Successfully scraped live dam data from SLDC!")
+    except Exception as e:
+        print(f"⚠️ Live Scraper warning: {e}. Falling back to default data.")
+        
+    return scraped_damsimport datetime
 import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
@@ -11,7 +466,6 @@ from app.routers import citizen_ops
 
 from app.routers import protocol
 
-from fastapi import Form, Response
 import base64
 import io
 from fastapi.responses import StreamingResponse
@@ -39,12 +493,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 load_dotenv()
 N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
-from google import genai
+
+import google.generativeai as genai
 import chromadb
 from . import auth, models, schemas
 from .database import engine, get_db, SessionLocal
-
-
 
 SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
 
@@ -75,12 +528,11 @@ def load_ml_assets():
         print(f"Warning: ML models not found. Phase 3 predictions will fail: {e}")
 
 google_api_key = os.getenv("GOOGLE_API_KEY")
-genai_client = None
-
+genai_model = None
 if google_api_key and not google_api_key.startswith("your"):
     try:
-        # The new SDK uses a Client object instead of a direct Model object
-        genai_client = genai.Client(api_key=google_api_key)
+        genai.configure(api_key=google_api_key)
+        genai_model = genai.GenerativeModel('gemini-3.5-flash')
     except Exception as e:
         print(f"Failed to init Gemini: {e}")
         
@@ -226,29 +678,16 @@ async def run_kerala_flood_pipeline():
     kerala_live_cache["reservoirs"] = live_dams
     kerala_live_cache["last_updated"] = timestamp
     print("✅ Kerala Live Cache successfully populated.")
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_ml_assets()
-    
-    # Keep your existing background jobs
     scheduler.add_job(fetch_satellite_sar_data, 'interval', minutes=1)
     scheduler.add_job(run_kerala_flood_pipeline, 'interval', hours=1)
-    
-    # 1. Schedule the NEW telemetry job to run every 15 minutes
-    scheduler.add_job(update_telemetry_cache, 'interval', minutes=15)
-    
     scheduler.start()
-    
-    # Keep your existing immediate task
     asyncio.create_task(run_kerala_flood_pipeline())
-    
-    # 2. Run the NEW telemetry task immediately on boot
-    asyncio.create_task(update_telemetry_cache())
-    
+
     yield
     scheduler.shutdown()
-
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -260,6 +699,13 @@ app = FastAPI(
 
 from fastapi.middleware.cors import CORSMiddleware
 
+# Without this, every browser-based client (Flutter web, a local admin
+# dashboard, etc.) has every POST/PUT silently blocked — the browser's
+# OPTIONS preflight gets a bare 405 with no Access-Control-Allow-Origin
+# header, so the real request never goes out at all. allow_credentials
+# must stay False here: browsers reject a wildcard allow_origins paired
+# with allow_credentials=True outright, which silently breaks every
+# request again in a way that's much harder to spot than a 405.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -267,42 +713,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-async def update_telemetry_cache():
-    print("🔄 Fetching live 4-pillar telemetry for Kerala...")
-    try:
-        live_data = await fetch_open_meteo_data()
-        
-        for district, data in live_data.items():
-            rain = data.get("rainfall_mm", 0)
-            if rain > 30.0:
-                score, alert, is_high = 9.0, "CRITICAL", True
-                factors = ["rainfall_mm", "river_discharge"]
-            elif rain > 15.0:
-                score, alert, is_high = 7.5, "HIGH", True
-                factors = ["rainfall_mm_3d_sum", "slope_deg"]
-            else:
-                score, alert, is_high = 3.0, "NORMAL", False
-                factors = ["elevation_m", "dist_nearest_river_km"]
-
-            kerala_live_cache["districts"][district] = {
-                **data,
-                "risk_score": score,
-                "risk_probability": score / 10.0,
-                "alert_level": alert,
-                "is_high_risk": is_high,
-                "top_factors": factors
-            }
-            
-        kerala_live_cache["last_updated"] = "Live"
-        print("✅ Cache successfully updated with live meteorological data.")
-        
-    except Exception as e:
-        print(f"⚠️ Pipeline Error: {e}")
-
-
-
 
 # app/agents.py's router (POST /api/agents/trigger) was defined but never
 # mounted — the frontend's `/api/agents/trigger` call was hitting a bare
@@ -655,15 +1065,16 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return {"message": f"User {new_user.full_name} created successfully!", "user_id": new_user.id}
 
 @app.post("/api/auth/login")
-def login_user(payload: schemas.UserLogin, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == payload.email).first()
-    if not user or not auth.verify_password(payload.password, user.hashed_password):
+def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == form_data.username).first()
+    if not user or not auth.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     access_token = auth.create_access_token(
         data={"sub": user.email, "role": user.role}
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
 @app.post("/api/predict/risk")
 async def predict_flood_risk(
     payload: schemas.RiskPredictionRequest
@@ -752,43 +1163,28 @@ async def predict_flood_risk(
         "top_factors": top_factors,
     }
 @app.post("/api/chat") 
-async def chat_with_ragbot(req: schemas.ChatRequest):
+async def chat_with_ragbot(
+    req: schemas.ChatRequest
+):
     context_text = ""
     docs = []
 
-    # 1. Retrieve Official NDMA Protocols from Local Vector DB
     if collection:
         results = collection.query(query_texts=[req.message], n_results=3)
         if results and results['documents'] and len(results['documents'][0]) > 0:
             docs = results['documents'][0]
             context_text = "\n\n".join(docs)
 
-    # 2. Online Mode: Dynamic Language Generation
-    if genai_client:
+    if genai_model:
         try:
-            # Safely check for the language parameter (defaults to english)
-            target_lang = getattr(req, 'language', 'english').lower()
-            lang_instruction = (
-                "Respond strictly in Malayalam." 
-                if target_lang == "malayalam" 
-                else "Respond in English."
-            )
-
             prompt = (
-                "You are the PrecipOps Emergency Survival Assistant. "
-                f"{lang_instruction} "
-                "Use ONLY the following official NDMA protocols to answer the user's question. "
+                "You are the FloodOps Emergency Survival Assistant. "
+                "Use ONLY the following official protocols to answer the user's question. "
                 "Keep answers highly concise and focused on immediate safety.\n\n"
                 f"Protocols:\n{context_text}\n\n"
                 f"User Question: {req.message}"
             )
-            
-            response = genai_client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt
-            )
-        
-
+            response = genai_model.generate_content(prompt)
             return {
                 "mode": "online",
                 "reply": response.text,
@@ -797,7 +1193,6 @@ async def chat_with_ragbot(req: schemas.ChatRequest):
         except Exception as e:
             print(f"Cloud AI failed ({e}). Falling back to offline mode.")
 
-    # 3. Offline Mode: Zero-Internet Fallback
     if docs:
         offline_reply = "⚠️ [Offline Protocol Mode] Cloud AI unavailable. Verified instructions:\n\n"
         for i, doc_text in enumerate(docs):
@@ -813,6 +1208,7 @@ async def chat_with_ragbot(req: schemas.ChatRequest):
         "reply": "⚠️ [Offline Mode] No specific protocols found. Move to high ground immediately.",
         "sources_used": 0
     }
+
 @app.post("/api/volunteers/location")
 async def update_volunteer_location(
     payload: schemas.VolunteerLocationUpdate,
@@ -1083,7 +1479,7 @@ async def receive_offline_sms_sos(
 ):
     """
     Webhook for Twilio/Exotel. 
-    Receives an offline cellular SMS like: "SOS 28.61 77.20 Trapped on roof"
+    Receives an offline SMS like: "SOS 28.61 77.20 Trapped on roof"
     """
     parts = Body.strip().split(" ")
     
@@ -1093,45 +1489,21 @@ async def receive_offline_sms_sos(
             lng = float(parts[2])
             desc = " ".join(parts[3:]) if len(parts) > 3 else "Offline SMS SOS Request"
             
-            # --- SOS ABUSE THROTTLING (New Feature) ---
-            # Automatically throttle if the system detects too many downvoted/fake reports
-            spam_count = db.query(models.Report).filter(
-                models.Report.user_id == 1,  # Default system ID for unregistered SMS users
-                models.Report.no_count >= 3  # Community flagged as false alarm
-            ).count()
-            
-            if spam_count > 5:
-                return Response(
-                    content="<Response><Message>FloodOps: Alert throttled due to high false-alarm rate.</Message></Response>", 
-                    media_type="application/xml"
-                )
-            # -------------------------------------------
-
             spatial_point = f"SRID=4326;POINT({lng} {lat})"
             new_report = models.Report(
-                description=f"[VIA SMS - {From}] {desc}",
+                description=f"[VIA SMS] {desc}",
                 location=spatial_point,
-                user_id=1 # Default fallback user ID for SMS
+                user_id=1 
             )
             
             db.add(new_report)
             db.commit()
             db.refresh(new_report)
-            
-            # Trigger volunteer matching & RAG protocols
             allocate_resources_for_sos(new_report.id, desc, lat, lng, db)
-            
-            # Twilio requires valid TwiML (XML) to reply to the sender
-            return Response(
-                content="<Response><Message>FloodOps: SOS Received. Responders alerted and routed to your coordinates.</Message></Response>", 
-                media_type="application/xml"
-            )
+            return Response(content="<Response><Message>SOS Received</Message></Response>", media_type="application/xml")
             
         except ValueError:
-            return Response(
-                content="<Response><Message>FloodOps Error: Invalid coordinates. Format must be 'SOS Latitude Longitude Message'</Message></Response>", 
-                media_type="application/xml"
-            )
+            return Response(content="<Response><Message>Invalid coordinates</Message></Response>", media_type="application/xml")
             
     return Response(content="<Response></Response>", media_type="application/xml")
 
@@ -1213,11 +1585,10 @@ CAPABILITIES & RULES:
 3. VOICE-FIRST FORMATTING: Never use asterisks, bullet points, Markdown headings, URLs, or emojis. Every output must be plain, readable prose intended to be converted directly to speech audio.
 """
 
-from google.genai import types
-
-voice_agent_config = None
+voice_agent = None
 if google_api_key and not google_api_key.startswith("your"):
-    voice_agent_config = types.GenerateContentConfig(
+    voice_agent = genai.GenerativeModel(
+        model_name="gemini-flash-latest",
         tools=[find_nearest_shelter, query_safety_manuals],
         system_instruction=system_instruction
     )
@@ -1250,17 +1621,23 @@ async def voice_agent_endpoint(
             print(f"📍 Coordinates: {lat}, {lng}")
             print(f"🎙️ User Spoke: {transcript}")
 
-            if not genai_client:
+            if not voice_agent:
                 return {"status": "Agent_Failed", "error": "Gemini API key not configured."}
 
-            chat = genai_client.aio.chats.create(
-        model="gemini-1.5-flash",
-        config=voice_agent_config
-    )
+            chat = voice_agent.start_chat(enable_automatic_function_calling=True)
             agent_input = f"User GPS: ({lat}, {lng}). Spoken message: '{transcript}'"
 
-         
-            gemini_response = await asyncio.wait_for(chat.send_message(agent_input), timeout=45)
+            # Network-hang protection — an unreachable/rate-limited Gemini
+            # call would otherwise leave the request (and the caller's mic
+            # UI) stuck indefinitely with no failure signal. 45s not 30s:
+            # tool calling (find_nearest_shelter/query_safety_manuals)
+            # forces a second sequential round-trip to Gemini, measured
+            # directly at ~17.5s for that alone with no other overhead —
+            # add Render's own egress latency plus the sequential Sarvam
+            # STT/TTS calls elsewhere in this same request and 30s was
+            # intermittently timing out on normal end-to-end latency, not
+            # an actual failure.
+            gemini_response = await asyncio.wait_for(chat.send_message_async(agent_input), timeout=45)
             agent_answer = gemini_response.text
             tts_resp = await client.post(
                 "https://api.sarvam.ai/text-to-speech",
@@ -1298,45 +1675,255 @@ async def voice_agent_endpoint(
 import pickle
 import pandas as pd
 import os
-from pydantic import BaseModel
-from fastapi import HTTPException
+@app.post("/api/ml/predict-kerala")
+def predict_kerala_flood(data: dict):
+    try:
+        model_path = "ml_models/flood_xgb_model.json"
+        columns_path = "ml_models/model_columns.pkl"
+        model = xgb.Booster()
+        model.load_model(model_path)
+        
+        with open(columns_path, "rb") as f:
+            model_columns = pickle.load(f)
+        input_data = {col: [0.0] for col in model_columns}
+        for key, value in data.items():
+            if key in input_data:
+                input_data[key] = [value]
+                
+        df = pd.DataFrame(input_data)
+        dmatrix = xgb.DMatrix(df)
+        
+        prediction = model.predict(dmatrix)
+        score = float(prediction[0])
+        
+        return {
+            "status": "success",
+            "flood_risk_score": score,
+            "risk_level": "HIGH" if score > 0.5 else "SAFE"
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}import datetime
+import enum
+from typing import Optional, List, Dict, Any
 
-class KeralaPredictionRequest(BaseModel):
-    lat: float
-    lon: float
-    district: str
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Enum, JSON
+from sqlalchemy.orm import relationship, Mapped, mapped_column
+from sqlalchemy.sql import func
+from geoalchemy2 import Geometry
 
-# Map old tabular features to PS-71 mandatory terminology
-PS71_TERMINOLOGY_MAP = {
-    "elevation_m": "INSAT-3DR Topography (Satellite)",
-    "slope_deg": "DEM-Derived Avalanche Risk (Satellite)",
-    "river_discharge": "Doppler Weather Radar (Streamflow)",
-    "rainfall_mm": "Observational AWS Data (Ground)",
-    "rainfall_mm_3d_sum": "NWP Precipitation Forecast",
-    "dist_nearest_river_km": "Geospatial Catchment Baseline"
-}
+from .database import Base
 
-@app.post("/api/ml/predict-kerala", tags=["PS 71 Inundation"])
-async def predict_kerala_flood(payload: KeralaPredictionRequest):
-    # Fetch live 4-pillar fused data from the background cache
-    live_data = kerala_live_cache["districts"].get(payload.district)
+class UserRole(str, enum.Enum):
+    citizen = "citizen"
+    volunteer = "volunteer"
+    official = "official"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    role = Column(Enum(UserRole), default=UserRole.citizen)
+    status = Column(String, default="available")  # available, busy, offline
+    skills = Column(String, nullable=True)        # e.g., "boat,medical,swimming"
+    last_known_location = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
+    fcm_token = Column(String, nullable=True)
     
-    if not live_data:
-        raise HTTPException(status_code=404, detail=f"No live telemetry found for district: {payload.district}")
+    reports = relationship("Report", foreign_keys="[Report.user_id]", back_populates="owner")
+    assigned_reports = relationship("Report", foreign_keys="[Report.assigned_volunteer_id]", back_populates="assigned_volunteer")
 
-    # Intercept and translate the basic XGBoost factors into SIH terms
-    raw_factors = live_data.get("top_factors", [])
-    advanced_factors = [PS71_TERMINOLOGY_MAP.get(factor, factor) for factor in raw_factors]
 
-    return {
-        "status": "success",
-        "district": payload.district,
-        "latitude": payload.lat,
-        "longitude": payload.lon,
-        "flood_risk_score": live_data.get("risk_score", 0),
-        "risk_probability": live_data.get("risk_probability", 0.0),
-        "risk_level": live_data.get("alert_level", "NORMAL"),
-        "is_high_risk": live_data.get("is_high_risk", False),
-        "top_factors": advanced_factors,
-        "telemetry_pillars": live_data.get("pillars", {})  # This is the line that was missing
-    }
+class Report(Base):
+    __tablename__ = "reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    description = Column(String)
+    
+    yes_count = Column(Integer, default=0)
+    no_count = Column(Integer, default=0)
+    
+    status = Column(String, default="pending") 
+    client_timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    location = Column(Geometry(geometry_type='POINT', srid=4326))
+    
+    user_id = Column(Integer, ForeignKey("users.id"))
+    owner = relationship("User", foreign_keys=[user_id], back_populates="reports")
+    assigned_volunteer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assigned_volunteer = relationship("User", foreign_keys=[assigned_volunteer_id], back_populates="assigned_reports")
+
+
+class Shelter(Base):
+    __tablename__ = "shelters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    capacity = Column(Integer)
+    current_occupancy = Column(Integer, default=0)
+    location = Column(Geometry(geometry_type='POINT', srid=4326))
+
+class PredictionRecord(Base):
+    __tablename__ = "predictions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    district: Mapped[str] = mapped_column(index=True)
+    final_jjas: Mapped[float]
+    final_annual: Mapped[float]
+    risk_class: Mapped[int]
+
+
+class AlertRecord(Base):
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    district: Mapped[str] = mapped_column(index=True)
+    alert_level: Mapped[str]
+    message: Mapped[str]
+    helpline: Mapped[Optional[str]] = mapped_column(nullable=True)
+    status: Mapped[str] = mapped_column(default="pending")
+    risk_score: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    resolved_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    resolved_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class AgentRunLog(Base):
+    __tablename__ = "agent_run_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[str] = mapped_column(unique=True, index=True)
+    district: Mapped[str] = mapped_column(index=True)
+    status: Mapped[str]
+    coordinator_summary: Mapped[str]
+    execution_chain: Mapped[List[Dict[str, Any]]] = mapped_column(JSON)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)from pydantic import BaseModel, ConfigDict
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+from .models import UserRole
+
+class ReportCreate(BaseModel):
+    description: str
+    latitude: float
+    longitude: float
+    user_id: int  # For now, we manually pass the user ID until we set up login
+
+class ReportVerify(BaseModel):
+    is_verified: bool
+
+class UserCreate(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    role: UserRole = UserRole.citizen
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class BulkReportItem(BaseModel):
+    description: str
+    latitude: float
+    longitude: float
+    client_timestamp: datetime
+
+class BulkReportUpload(BaseModel):
+    reports: List[BulkReportItem]
+class RiskPredictionRequest(BaseModel):
+    rainfall_mm: float
+    river_discharge: float
+    elevation_m: float
+    slope_deg: float
+    dist_nearest_river_km: float
+    rainfall_mm_3d_sum: float
+    rainfall_mm_7d_sum: float
+    rainfall_mm_15d_sum: float
+    river_discharge_3d_sum: float
+    river_discharge_7d_sum: float
+    river_discharge_15d_sum: float
+    historical_flood_count: float
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str = "default"
+
+class VolunteerLocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+    status: str = "available"  # available / busy / offline
+    skills: Optional[str] = None  # e.g., "boat,medical,swimming"
+
+class PredictionResponse(BaseModel):
+    id: int
+    district: str
+    risk_class: int
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class AlertResponse(BaseModel):
+    id: int
+    district: str
+    alert_level: str
+    message: str
+    status: str = "pending"
+    risk_score: Optional[int] = None
+    created_at: datetime
+    resolved_by: Optional[int] = None
+    resolved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ReportAdminResponse(BaseModel):
+    id: int
+    description: str
+    latitude: float
+    longitude: float
+    status: str
+    yes_count: int
+    no_count: int
+    client_timestamp: Optional[datetime] = None
+    assigned_volunteer_id: Optional[int] = None
+    assigned_volunteer_name: Optional[str] = None
+
+class VolunteerAdminResponse(BaseModel):
+    id: int
+    full_name: str
+    status: str
+    skills: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+class AssignReportRequest(BaseModel):
+    volunteer_id: int
+
+class AgentRunLogResponse(BaseModel):
+    id: int
+    run_id: str
+    district: str
+    status: str
+    coordinator_summary: str
+    execution_chain: List[Dict[str, Any]]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+    # --- ADD AT THE BOTTOM OF app/schemas.py ---
+
+class InundationPolygon(BaseModel):
+    zone_id: str
+    severity: str  # "MODERATE", "CRITICAL", "EXTREME"
+    avg_water_depth_meters: float
+    affected_landmarks: List[str]
+    geojson_geometry: Dict[str, Any]
+
+class PS71PredictionResponse(BaseModel):
+    timestamp: str
+    district: str
+    lead_time_warning: str
+    alert_level: str  # "GREEN", "ORANGE", "RED"
+    meteorological_inputs: Dict[str, Any]
+    inundation_zones: List[InundationPolygon]
+    advisory_bulletin: str
