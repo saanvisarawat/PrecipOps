@@ -12,6 +12,7 @@ import '../../api/models/inundation_models.dart';
 import '../../api/models/kerala_telemetry_models.dart';
 import '../../core/constants/kerala_districts.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/risk_scenario.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../providers/api_provider.dart';
@@ -55,14 +56,29 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
   @override
   void initState() {
     super.initState();
-    _load();
-    _loadKerala();
+    _onDistrictChanged(_district);
   }
 
   @override
   void dispose() {
     _playTimer?.cancel();
     super.dispose();
+  }
+
+  /// District selection (initial load or dropdown change): fetches this
+  /// district's real PS-71 risk first, auto-picks the matching scenario
+  /// from it (rather than leaving the simulate panel stuck on whatever
+  /// scenario was last showing), then loads the inundation simulation.
+  /// A manual toggle tap or a telemetry-only refresh goes through
+  /// [_load]/[_loadKerala] directly instead, so it never overrides a
+  /// meteorologist's own manual scenario choice.
+  Future<void> _onDistrictChanged(String district) async {
+    setState(() => _district = district);
+    await _loadKerala();
+    if (mounted && _keralaData != null) {
+      setState(() => _scenario = scenarioForRiskLevel(_keralaData!.riskLevel));
+    }
+    _load();
   }
 
   Future<void> _loadKerala() async {
@@ -204,11 +220,7 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
                               child: DistrictDropdown(
                                 value: _district,
                                 label: 'District',
-                                onChanged: (v) {
-                                  setState(() => _district = v);
-                                  _load();
-                                  _loadKerala();
-                                },
+                                onChanged: _onDistrictChanged,
                               ),
                             ),
                             const SizedBox(width: AppSpacing.sm),

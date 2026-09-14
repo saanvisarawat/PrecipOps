@@ -66,8 +66,11 @@ extension TaskPriorityX on TaskPriority {
 enum TaskStatus { assigned, enRoute, completed }
 
 extension TaskStatusX on TaskStatus {
+  // Real Report.status writes "en-route" (hyphen); the mock and this
+  // app's original guessed contract use "en_route" (underscore) — both
+  // accepted here so either backend's value round-trips correctly.
   static TaskStatus fromWire(String value) => switch (value) {
-        'en_route' => TaskStatus.enRoute,
+        'en_route' || 'en-route' => TaskStatus.enRoute,
         'completed' => TaskStatus.completed,
         _ => TaskStatus.assigned,
       };

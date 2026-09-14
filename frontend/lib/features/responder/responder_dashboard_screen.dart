@@ -5,10 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../api/models/inundation_models.dart';
-import '../../api/models/shelter_models.dart';
+import '../../api/floodops_api.dart';
 import '../../core/constants/kerala_districts.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/risk_scenario.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../providers/api_provider.dart';
@@ -61,7 +61,8 @@ class _ResponderDashboardScreenState extends ConsumerState<ResponderDashboardScr
     });
     final api = ref.read(preciopsApiProvider);
     try {
-      final inundation = await api.getInundationSimulation(district: _district, scenario: 'EXTREME_EVENT');
+      final scenario = await _resolveScenario(api);
+      final inundation = await api.getInundationSimulation(district: _district, scenario: scenario);
       final protocol = await api.getNdmaProtocol(
         district: _district,
         alertLevel: inundation.alertLevel,
@@ -87,6 +88,20 @@ class _ResponderDashboardScreenState extends ConsumerState<ResponderDashboardScr
         _error = "Couldn't reach the backend. Pull to retry.";
         _loading = false;
       });
+    }
+  }
+
+  /// Picks the simulated scenario from this district's real PS-71 risk
+  /// level instead of always requesting the worst case — falls back to
+  /// EXTREME_EVENT (the safer over-warn default) if the live risk feed
+  /// can't be reached.
+  Future<String> _resolveScenario(PreciopsApi api) async {
+    try {
+      final d = KeralaDistricts.byName(_district);
+      final risk = await api.predictKerala(lat: d.lat, lon: d.lon, district: d.name);
+      return scenarioForRiskLevel(risk.riskLevel);
+    } catch (_) {
+      return 'EXTREME_EVENT';
     }
   }
 

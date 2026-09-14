@@ -156,8 +156,13 @@ abstract class PreciopsApi {
 
   // 21. Volunteer Hub "Accept" action — transitions an assigned task to
   // en-route and notifies the reporting citizen (VolunteerEnRouteEvent on
-  // dashboardEventStream) that a volunteer is now on the way.
-  Future<VolunteerTask> acceptTask({required String taskId, required String volunteerName});
+  // dashboardEventStream) that a volunteer is now on the way. Takes the
+  // whole task (not just its id) because the real backend's response
+  // (POST /api/volunteers/tasks/{id}/accept) only echoes back
+  // {status, ticket_id, volunteer} — not a full task shape — so the
+  // returned VolunteerTask is reconstructed from what the caller already
+  // had plus the confirmed new status.
+  Future<VolunteerTask> acceptTask({required VolunteerTask task, required String volunteerName});
 
   // 22. Citizen-side live tracking of the volunteer dispatched to their own
   // ticket, once en route — polled every few seconds while a ticket has an

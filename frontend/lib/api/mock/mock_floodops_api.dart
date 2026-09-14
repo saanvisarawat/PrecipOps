@@ -437,12 +437,12 @@ class MockPreciopsApi implements PreciopsApi {
   /// and starts moving the volunteer's simulated position toward the
   /// incident so the citizen has something real to watch on their map.
   @override
-  Future<VolunteerTask> acceptTask({required String taskId, required String volunteerName}) async {
+  Future<VolunteerTask> acceptTask({required VolunteerTask task, required String volunteerName}) async {
     await _delay(300, 700);
     if (_volunteerTasks == null) await getVolunteerTasks();
     final tasks = _volunteerTasks!;
-    final index = tasks.indexWhere((t) => t.taskId == taskId);
-    if (index == -1) throw StateError('Task $taskId not found');
+    final index = tasks.indexWhere((t) => t.taskId == task.taskId);
+    if (index == -1) throw StateError('Task ${task.taskId} not found');
     final current = tasks[index];
     if (current.status != TaskStatus.assigned) return current;
     final updated = VolunteerTask(

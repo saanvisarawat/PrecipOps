@@ -469,7 +469,12 @@ class DioPreciopsApi implements PreciopsApi {
           longitude: lng,
           description: json['description'] as String? ?? '',
           priority: TaskPriority.medium,
-          status: TaskStatus.assigned,
+          // Real Report.status is a free-text column ("dispatched" at
+          // assign time, "en-route" once accepted via
+          // POST /api/volunteers/tasks/{id}/accept) — mapped through
+          // TaskStatusX.fromWire so a reloaded task list still shows
+          // "Accept" only for ones genuinely still unaccepted.
+          status: TaskStatusX.fromWire(json['status'] as String? ?? 'assigned'),
           assignedAt: DateTime.now(),
           distanceKm: 0,
         ));
@@ -694,18 +699,31 @@ class DioPreciopsApi implements PreciopsApi {
     return SmsBroadcastResult.fromJson(res.data as Map<String, dynamic>);
   }
 
-  // NOTE: as of this backend snapshot there is no confirmed real route for
-  // a volunteer accepting an assigned task, or for a citizen polling their
-  // dispatched volunteer's live position — both are best-effort calls to
-  // plausible routes below, consistent with this app's existing naming.
-  // Update these once the backend actually exposes the corresponding
-  // endpoints.
   @override
-  Future<VolunteerTask> acceptTask({required String taskId, required String volunteerName}) async {
-    final res = await _dio.post('/api/volunteers/tasks/$taskId/accept');
-    return VolunteerTask.fromJson(res.data as Map<String, dynamic>);
+  Future<VolunteerTask> acceptTask({required VolunteerTask task, required String volunteerName}) async {
+    // Real POST /api/volunteers/tasks/{task_id}/accept takes the raw
+    // numeric Report id (task.sosTicketId, not the "TASK-$id" display
+    // string in task.taskId) and its response is only
+    // {status, ticket_id, volunteer} — not a full task shape — so the
+    // updated task is reconstructed locally from what we already had.
+    await _dio.post('/api/volunteers/tasks/${task.sosTicketId}/accept');
+    return VolunteerTask(
+      taskId: task.taskId,
+      sosTicketId: task.sosTicketId,
+      district: task.district,
+      latitude: task.latitude,
+      longitude: task.longitude,
+      description: task.description,
+      priority: task.priority,
+      status: TaskStatus.enRoute,
+      assignedAt: task.assignedAt,
+      distanceKm: task.distanceKm,
+    );
   }
 
+  // Real GET /api/reports/{ticket_id}/volunteer-location — ticketId here is
+  // already the raw numeric Report id (see createReport's `ticket_id`
+  // below), matching what this route expects.
   @override
   Future<VolunteerLocationSnapshot?> getVolunteerLocationForTicket(String ticketId) async {
     try {

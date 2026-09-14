@@ -83,7 +83,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
     final api = ref.read(preciopsApiProvider);
     final volunteerName = ref.read(authProvider).user?.fullName ?? 'Volunteer';
     try {
-      final updated = await api.acceptTask(taskId: task.taskId, volunteerName: volunteerName);
+      final updated = await api.acceptTask(task: task, volunteerName: volunteerName);
       if (mounted) {
         setState(() {
           final index = _tasks?.indexWhere((t) => t.taskId == task.taskId) ?? -1;
