@@ -87,12 +87,14 @@ class DioPreciopsApi implements PreciopsApi {
 
   @override
   Future<AuthResponse> login(LoginRequest request) async {
-    // Real /api/auth/login is OAuth2PasswordRequestForm — form-encoded
-    // `username`/`password`, not JSON, and not literally `email`.
+    // Real /api/auth/login takes a plain JSON body matching
+    // schemas.UserLogin(email, password) — not an OAuth2PasswordRequestForm.
+    // Sending form-encoded username/password (the previous assumption here)
+    // 422s on every single attempt: "Input should be a valid dictionary or
+    // object to extract fields from".
     final res = await _dio.post(
       '/api/auth/login',
-      data: {'username': request.email, 'password': request.password},
-      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: {'email': request.email, 'password': request.password},
     );
     final data = res.data as Map<String, dynamic>;
     final token = data['access_token'] as String;
