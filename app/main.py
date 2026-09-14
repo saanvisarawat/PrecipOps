@@ -275,25 +275,23 @@ async def update_telemetry_cache():
         live_data = await fetch_open_meteo_data()
         
         for district, data in live_data.items():
-            rain = data.get("rainfall_mm", 0)
-            if rain > 30.0:
-                score, alert, is_high = 9.0, "CRITICAL", True
-                factors = ["rainfall_mm", "river_discharge"]
-            elif rain > 15.0:
-                score, alert, is_high = 7.5, "HIGH", True
-                factors = ["rainfall_mm_3d_sum", "slope_deg"]
+            if district in kerala_live_cache["districts"]:
+                # Only update the raw weather/telemetry feeds. 
+                # Do NOT touch risk_score, alert_level, or top_factors.
+                current = kerala_live_cache["districts"][district]
+                current["rainfall_mm"] = data.get("rainfall_mm", current.get("rainfall_mm"))
+                current["river_discharge_m3s"] = data.get("river_discharge_m3s", current.get("river_discharge_m3s"))
+                current["pillars"] = data.get("pillars", current.get("pillars"))
             else:
-                score, alert, is_high = 3.0, "NORMAL", False
-                factors = ["elevation_m", "dist_nearest_river_km"]
-
-            kerala_live_cache["districts"][district] = {
-                **data,
-                "risk_score": score,
-                "risk_probability": score / 10.0,
-                "alert_level": alert,
-                "is_high_risk": is_high,
-                "top_factors": factors
-            }
+                # If ML pipeline hasn't run yet, initialize safely as NORMAL
+                kerala_live_cache["districts"][district] = {
+                    **data,
+                    "risk_score": 0,
+                    "risk_probability": 0.0,
+                    "alert_level": "NORMAL",
+                    "is_high_risk": False,
+                    "top_factors": ["elevation_m"]
+                }
             
         kerala_live_cache["last_updated"] = "Live"
         print("✅ Cache successfully updated with live meteorological data.")
@@ -303,10 +301,6 @@ async def update_telemetry_cache():
 
 
 
-
-# app/agents.py's router (POST /api/agents/trigger) was defined but never
-# mounted — the frontend's `/api/agents/trigger` call was hitting a bare
-# 404 with no route registered for it at all.
 from .agents import router as agents_router
 app.include_router(agents_router)
 
@@ -1339,4 +1333,57 @@ async def predict_kerala_flood(payload: KeralaPredictionRequest):
         "is_high_risk": live_data.get("is_high_risk", False),
         "top_factors": advanced_factors,
         "telemetry_pillars": live_data.get("pillars", {})  # This is the line that was missing
+    }
+
+@app.post("/api/volunteers/tasks/{task_id}/accept", tags=["Volunteers"])
+async def accept_volunteer_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    if current_user.role != models.UserRole.volunteer:
+        raise HTTPException(status_code=403, detail="Only volunteers can accept tasks.")
+    
+    report = db.query(models.Report).filter(models.Report.id == task_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Task not found.")
+        
+    report.assigned_volunteer_id = current_user.id
+    report.status = "en-route"
+    current_user.status = "busy"
+    db.commit()
+    
+    # Broadcast to the frontend dashboard that the volunteer is moving
+    await manager.broadcast({
+        "type": "volunteer_en_route",
+        "ticket_id": report.id,
+        "volunteer_id": current_user.id,
+        "volunteer_name": current_user.full_name
+    })
+    
+    return {"status": "en-route", "ticket_id": task_id, "volunteer": current_user.full_name}
+
+@app.get("/api/reports/{ticket_id}/volunteer-location", tags=["Reports"])
+async def get_volunteer_location(
+    ticket_id: int,
+    db: Session = Depends(get_db)
+):
+    report = db.query(models.Report).filter(models.Report.id == ticket_id).first()
+    if not report or not report.assigned_volunteer_id:
+        raise HTTPException(status_code=404, detail="No volunteer assigned to this ticket.")
+        
+    # Extract coordinates from the PostGIS geometry column
+    volunteer = db.query(
+        models.User,
+        func.ST_X(models.User.last_known_location).label('lng'),
+        func.ST_Y(models.User.last_known_location).label('lat')
+    ).filter(models.User.id == report.assigned_volunteer_id).first()
+    
+    if not volunteer or volunteer.lng is None:
+        raise HTTPException(status_code=404, detail="Volunteer location is currently unknown.")
+        
+    return {
+        "volunteer_name": volunteer.User.full_name,
+        "latitude": volunteer.lat,
+        "longitude": volunteer.lng
     }

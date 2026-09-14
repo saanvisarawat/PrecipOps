@@ -100,6 +100,84 @@ PAN_INDIA_REGISTRY = {
             "Kaloor Stadium Low-lying Ward",
             "Central Broadway Market Ward"
         ]
+    },
+    "Thiruvananthapuram": {
+        "center": [76.93, 8.52],
+        "radar": "DWR Thiruvananthapuram",
+        "aws_id": "IMD-AWS-TVM",
+        "landmarks": ["Trivandrum Central", "Thampanoor Basin"]
+    },
+    "Kollam": {
+        "center": [76.61, 8.89],
+        "radar": "DWR Thiruvananthapuram",
+        "aws_id": "IMD-AWS-KOL",
+        "landmarks": ["Ashtamudi Lake Axis", "Kollam Beach Road"]
+    },
+    "Pathanamthitta": {
+        "center": [76.78, 9.26],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-PTA",
+        "landmarks": ["Pamba River Banks", "Adoor Lowlands"]
+    },
+    "Alappuzha": {
+        "center": [76.33, 9.49],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-ALP",
+        "landmarks": ["Kuttanad Wetlands", "Ambalappuzha Corridor"]
+    },
+    "Kottayam": {
+        "center": [76.52, 9.59],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-KTY",
+        "landmarks": ["Kumarakom Basin", "Meenachil River Axis"]
+    },
+    "Idukki": {
+        "center": [76.94, 9.85],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-IDK",
+        "landmarks": ["Munnar Valleys", "Cheruthoni Downstream"]
+    },
+    "Thrissur": {
+        "center": [76.21, 10.52],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-TSR",
+        "landmarks": ["Thrissur Round Basin", "Chalakudy River Banks"]
+    },
+    "Palakkad": {
+        "center": [76.65, 10.78],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-PLK",
+        "landmarks": ["Kalpathy River Axis", "Palghat Gap Lowlands"]
+    },
+    "Malappuram": {
+        "center": [76.07, 11.07],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-MLP",
+        "landmarks": ["Kadalundi River Basin", "Nilambur Valleys"]
+    },
+    "Kozhikode": {
+        "center": [75.78, 11.25],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-KOZ",
+        "landmarks": ["Mavoor Wetlands", "Kallai River Axis"]
+    },
+    "Wayanad": {
+        "center": [76.13, 11.68],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-WAY",
+        "landmarks": ["Kabini River Basin", "Kalpetta Lowlands", "Mananthavady Downstream"]
+    },
+    "Kannur": {
+        "center": [75.37, 11.87],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-KAN",
+        "landmarks": ["Valapattanam River Basin", "Thalassery Coastal Road"]
+    },
+    "Kasaragod": {
+        "center": [74.98, 12.49],
+        "radar": "DWR Kochi",
+        "aws_id": "IMD-AWS-KAS",
+        "landmarks": ["Chandragiri River Banks", "Nileshwaram Lowlands"]
     }
 }
 
@@ -326,7 +404,7 @@ async def _execute_inundation_pipeline(district: str, scenario: str) -> PS71Simu
 
 @router.get("/predict", response_model=PS71SimulationResponse, operation_id="predict_inundation_endpoint")
 async def predict_inundation(
-    district: str = Query("Mumbai", description="Select city: Mumbai, Delhi, Chennai, Kolkata, Guwahati, Ernakulam"),
+    district: str = Query("Wayanad", description="Select a Kerala district (e.g., Wayanad, Ernakulam, Idukki, Alappuzha)"),
     scenario: str = Query("EXTREME_EVENT", description="Toggle 'NORMAL' or 'EXTREME_EVENT'")
 ):
     return await _execute_inundation_pipeline(district, scenario)
@@ -334,7 +412,7 @@ async def predict_inundation(
 
 @router.get("/simulate", response_model=PS71SimulationResponse, operation_id="simulate_inundation_endpoint")
 async def simulate_inundation(
-    district: str = Query("Mumbai", description="Select city: Mumbai, Delhi, Chennai, Kolkata, Guwahati, Ernakulam"),
+    district: str = Query("Wayanad", description="Select a Kerala district (e.g., Wayanad, Ernakulam, Idukki, Alappuzha)"),
     scenario: str = Query("EXTREME_EVENT", description="Toggle 'NORMAL' or 'EXTREME_EVENT'")
 ):
     return await _execute_inundation_pipeline(district, scenario)
@@ -342,7 +420,7 @@ async def simulate_inundation(
 
 @router.get("/heavy-rainfall/predict", response_model=PS71SimulationResponse, operation_id="predict_heavy_rainfall_endpoint")
 async def predict_heavy_rainfall(
-    district: str = Query("Mumbai", description="Select city: Mumbai, Delhi, Chennai, Kolkata, Guwahati, Ernakulam"),
+    district: str = Query("Wayanad", description="Select a Kerala district (e.g., Wayanad, Ernakulam, Idukki, Alappuzha)"),
     scenario: str = Query("EXTREME_EVENT", description="Toggle 'NORMAL' or 'EXTREME_EVENT'")
 ):
     return await _execute_inundation_pipeline(district, scenario)
