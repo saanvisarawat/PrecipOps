@@ -6,9 +6,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../providers/shell_nav_provider.dart';
-import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_card.dart';
-import '../dashboard/widgets/sos_composer_sheet.dart';
+import '../dashboard/widgets/sos_flow.dart';
 
 /// Feature hub — every major module as a tappable icon tile, so the user
 /// can jump straight to any module instead of digging through nav. A
@@ -32,7 +31,7 @@ class HubScreen extends ConsumerWidget {
         icon: Icons.emergency_share_rounded,
         label: 'SOS / Emergency Report',
         subtitle: 'Send an emergency alert',
-        onTap: () => AppBottomSheet.show(context, builder: (_) => const SosComposerSheet()),
+        onTap: () => submitSosViaComposer(context, ref),
       ),
       _HubTileData(
         icon: Icons.map_outlined,

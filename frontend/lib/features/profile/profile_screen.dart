@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/models/auth_models.dart';
+import '../../core/config/env.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../providers/api_base_url_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/secure_storage_service.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/app_button.dart';
 
@@ -109,6 +112,14 @@ class ProfileScreen extends ConsumerWidget {
                   subtitle: 'Download districts for offline navigation',
                   onTap: () => context.push('/offline-maps'),
                 ),
+                _SettingsRowData(
+                  icon: Icons.dns_outlined,
+                  title: 'Backend Server (Dev)',
+                  subtitle: ref.watch(apiBaseUrlOverrideProvider)?.isNotEmpty == true
+                      ? ref.watch(apiBaseUrlOverrideProvider)!
+                      : '${Env.apiBaseUrl} (default)',
+                  onTap: () => _showBackendUrlDialog(context, ref),
+                ),
               ],
             ),
             const SizedBox(height: AppSpacing.section),
@@ -160,6 +171,83 @@ class ProfileScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Lets a developer point this build at a different backend at runtime —
+/// no rebuild needed — which matters most for a physical device on Wi-Fi:
+/// the dev machine's LAN IP changes per test network, so it can't be a
+/// good compile-time `--dart-define` default. Quick-select chips cover
+/// the three documented targets from [Env]'s doc comment; the text field
+/// takes anything else (e.g. a LAN IP). Persisted via
+/// [SecureStorageService] so it survives an app restart.
+Future<void> _showBackendUrlDialog(BuildContext context, WidgetRef ref) async {
+  final current = ref.read(apiBaseUrlOverrideProvider);
+  final controller = TextEditingController(text: current ?? '');
+  const presets = [
+    ('Deployed (default)', ''),
+    ('Android Emulator', 'http://10.0.2.2:8000'),
+    ('Web/Desktop — localhost', 'http://127.0.0.1:8000'),
+  ];
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setDialogState) => AlertDialog(
+        backgroundColor: AppColors.surfaceRaised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Backend Server (Dev)', style: AppTypography.sectionTitle()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Overrides the default backend for local testing — e.g. a physical '
+              'device on Wi-Fi pointed at your dev machine\'s LAN IP.',
+              style: AppTypography.body(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (label, url) in presets)
+                  ActionChip(
+                    label: Text(label, style: AppTypography.label()),
+                    backgroundColor: AppColors.surfaceHigh,
+                    side: const BorderSide(color: AppColors.cardBorder),
+                    onPressed: () => setDialogState(() => controller.text = url),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextField(
+              controller: controller,
+              style: AppTypography.body(),
+              decoration: const InputDecoration(
+                hintText: 'http://192.168.x.x:8000',
+                labelText: 'Custom base URL (blank = default)',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text('Cancel', style: AppTypography.label()),
+          ),
+          TextButton(
+            onPressed: () async {
+              final value = controller.text.trim();
+              ref.read(apiBaseUrlOverrideProvider.notifier).state = value.isEmpty ? null : value;
+              await SecureStorageService().saveApiBaseUrlOverride(value.isEmpty ? null : value);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: Text('Save', style: AppTypography.label(color: AppColors.accent).copyWith(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SettingsRowData {

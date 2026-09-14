@@ -8,7 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../api/models/shelter_models.dart';
-import '../../core/constants/national_metros.dart';
+import '../../core/constants/kerala_districts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../providers/api_provider.dart';
@@ -76,9 +76,9 @@ class _EvacuationMapScreenState extends ConsumerState<EvacuationMapScreen> {
       await _loadMyPosition();
     }
     final target = _myPosition == null
-        ? NationalMetros.indiaMapCenter
+        ? KeralaDistricts.keralaMapCenter
         : LatLng(_myPosition!.latitude, _myPosition!.longitude);
-    _mapController.move(target, _myPosition == null ? NationalMetros.indiaMapDefaultZoom : 13);
+    _mapController.move(target, _myPosition == null ? KeralaDistricts.keralaMapDefaultZoom : 13);
   }
 
   Color _statusColor(ShelterFeature s) {
@@ -111,8 +111,8 @@ class _EvacuationMapScreenState extends ConsumerState<EvacuationMapScreen> {
         FlutterMap(
           mapController: _mapController,
           options: const MapOptions(
-            initialCenter: NationalMetros.indiaMapCenter,
-            initialZoom: NationalMetros.indiaMapDefaultZoom,
+            initialCenter: KeralaDistricts.keralaMapCenter,
+            initialZoom: KeralaDistricts.keralaMapDefaultZoom,
             minZoom: 4,
             maxZoom: 17,
           ),

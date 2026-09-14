@@ -29,6 +29,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
   final Set<VolunteerSkill> _skills = {VolunteerSkill.medical};
   List<VolunteerTask>? _tasks;
   bool _updatingStatus = false;
+  final Set<String> _accepting = {};
 
   Future<void> _loadTasks() async {
     final api = ref.read(preciopsApiProvider);
@@ -75,6 +76,27 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
       _updatingStatus = false;
     });
     if (ok && onDuty && _tasks == null) _loadTasks();
+  }
+
+  Future<void> _accept(VolunteerTask task) async {
+    setState(() => _accepting.add(task.taskId));
+    final api = ref.read(preciopsApiProvider);
+    final volunteerName = ref.read(authProvider).user?.fullName ?? 'Volunteer';
+    try {
+      final updated = await api.acceptTask(taskId: task.taskId, volunteerName: volunteerName);
+      if (mounted) {
+        setState(() {
+          final index = _tasks?.indexWhere((t) => t.taskId == task.taskId) ?? -1;
+          if (index != -1) _tasks![index] = updated;
+        });
+        AppToast.show(context, 'Accepted — the citizen has been notified you\'re on the way.', kind: AppToastKind.success);
+      }
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(context, "Couldn't accept this task — check your connection and try again.", kind: AppToastKind.error);
+      }
+    }
+    if (mounted) setState(() => _accepting.remove(task.taskId));
   }
 
   @override
@@ -234,7 +256,11 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
               for (final task in _tasks!)
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  child: _TaskCard(task: task),
+                  child: _TaskCard(
+                    task: task,
+                    accepting: _accepting.contains(task.taskId),
+                    onAccept: () => _accept(task),
+                  ),
                 ),
             const SizedBox(height: AppSpacing.lg),
             AppCard(
@@ -289,7 +315,9 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
 
 class _TaskCard extends StatelessWidget {
   final VolunteerTask task;
-  const _TaskCard({required this.task});
+  final bool accepting;
+  final VoidCallback onAccept;
+  const _TaskCard({required this.task, required this.accepting, required this.onAccept});
 
   Color _priorityColor(TaskPriority p) => switch (p) {
         TaskPriority.critical => AppColors.dangerStrong,
@@ -302,44 +330,66 @@ class _TaskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _priorityColor(task.priority);
     return AppCard(
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
-            child: Icon(Icons.route_outlined, color: color, size: 19),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(task.description, style: AppTypography.cardTitle().copyWith(fontSize: 14.5)),
-                const SizedBox(height: 4),
-                Text(
-                  '${task.district} • ${task.sosTicketId} • ${task.status.label}',
-                  style: AppTypography.caption(),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              StatusBadge(
-                label: task.priority.label,
-                color: color,
-                icon: Icons.priority_high,
-                filled: task.priority == TaskPriority.critical,
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
+                child: Icon(Icons.route_outlined, color: color, size: 19),
               ),
-              const SizedBox(height: 6),
-              Text('${task.distanceKm.toStringAsFixed(1)} km', style: AppTypography.caption()),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(task.description, style: AppTypography.cardTitle().copyWith(fontSize: 14.5)),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${task.district} • ${task.sosTicketId} • ${task.status.label}',
+                      style: AppTypography.caption(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  StatusBadge(
+                    label: task.priority.label,
+                    color: color,
+                    icon: Icons.priority_high,
+                    filled: task.priority == TaskPriority.critical,
+                  ),
+                  const SizedBox(height: 6),
+                  Text('${task.distanceKm.toStringAsFixed(1)} km', style: AppTypography.caption()),
+                ],
+              ),
             ],
           ),
+          if (task.status == TaskStatus.assigned) ...[
+            const SizedBox(height: AppSpacing.sm),
+            AppButton(
+              label: accepting ? 'Accepting…' : 'Accept',
+              icon: Icons.check_rounded,
+              isLoading: accepting,
+              onPressed: accepting ? null : onAccept,
+            ),
+          ] else if (task.status == TaskStatus.enRoute) ...[
+            const SizedBox(height: AppSpacing.sm),
+            const StatusBadge(
+              label: 'En Route — citizen notified',
+              color: AppColors.accent,
+              icon: Icons.directions_run_rounded,
+              filled: true,
+            ),
+          ],
         ],
       ),
     );

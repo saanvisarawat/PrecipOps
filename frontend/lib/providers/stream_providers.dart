@@ -39,6 +39,25 @@ final riskPushNotifierProvider = Provider<void>((ref) {
   });
 });
 
+/// Fires a system/local push notification the moment a citizen files a new
+/// SOS (`NewSosPendingEvent`) — lets an official know to dispatch without
+/// needing the SOS Dashboard already open. Watched once from
+/// `PredictorDashboardScreen` (where an official/`UserRole.official` lands
+/// and stays, per `AppRole.fromLegacy`), same "always-mounted" reasoning as
+/// [riskPushNotifierProvider].
+final sosPushNotifierProvider = Provider<void>((ref) {
+  final notifications = ref.watch(notificationServiceProvider);
+  ref.listen<AsyncValue<DashboardEvent>>(dashboardEventStreamProvider, (previous, next) {
+    next.whenData((event) {
+      if (event is! NewSosPendingEvent) return;
+      notifications.init().then((_) => notifications.showSosAlert(
+            title: 'New SOS Reported — ${event.district}',
+            body: event.description,
+          ));
+    });
+  });
+});
+
 /// Masked-call trigger (module 8). Today only fired by the debug button
 /// on the volunteer hub via `PreciopsApi.simulateIncomingCall()`; once
 /// push is wired up this same stream carries real FCM-triggered calls.

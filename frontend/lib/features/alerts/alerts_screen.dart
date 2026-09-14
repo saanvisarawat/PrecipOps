@@ -179,6 +179,17 @@ class _AlertTile extends StatelessWidget {
           AppColors.info,
           Icons.groups_rounded,
         ),
+      VolunteerEnRouteEvent(:final ticketId, :final volunteerName) => (
+          Icons.directions_run_rounded,
+          AppColors.accent,
+          'Volunteer On The Way',
+          volunteerName != null
+              ? '$volunteerName accepted and is en route to ticket $ticketId.'
+              : 'A volunteer accepted and is en route to ticket $ticketId.',
+          'En Route',
+          AppColors.accent,
+          Icons.directions_run_rounded,
+        ),
     };
     return AppCard(
       child: Row(

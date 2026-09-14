@@ -7,16 +7,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../api/models/dashboard_event_models.dart';
 import '../../api/models/inundation_models.dart';
-import '../../core/constants/national_metros.dart';
+import '../../api/models/kerala_telemetry_models.dart';
+import '../../core/constants/kerala_districts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../providers/api_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/stream_providers.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/app_slider.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/district_dropdown.dart';
 import '../../widgets/map_pin_marker.dart';
 import '../../widgets/section_header.dart';
@@ -34,7 +38,7 @@ class PredictorDashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScreen> {
-  String _district = NationalMetros.all.first.name;
+  String _district = KeralaDistricts.defaultName;
   String _scenario = 'EXTREME_EVENT';
   InundationSimulationResponse? _data;
   bool _loading = true;
@@ -44,16 +48,44 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
   Timer? _playTimer;
   bool _playing = false;
 
+  KeralaPredictionResponse? _keralaData;
+  bool _keralaLoading = true;
+  String? _keralaError;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadKerala();
   }
 
   @override
   void dispose() {
     _playTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadKerala() async {
+    setState(() {
+      _keralaLoading = true;
+      _keralaError = null;
+    });
+    try {
+      final api = ref.read(preciopsApiProvider);
+      final d = KeralaDistricts.byName(_district);
+      final result = await api.predictKerala(lat: d.lat, lon: d.lon, district: d.name);
+      if (!mounted) return;
+      setState(() {
+        _keralaData = result;
+        _keralaLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _keralaError = "Couldn't reach the live Kerala telemetry feed.";
+        _keralaLoading = false;
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -109,6 +141,24 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+
+    // Wires up the new-SOS push notifier for officials — this screen is
+    // where `UserRole.official` lands and stays (per `AppRole.fromLegacy`),
+    // so watching it here (rather than only from the SOS Dashboard) means
+    // dispatch gets flagged even if that screen isn't currently open.
+    ref.watch(sosPushNotifierProvider);
+    ref.listen<AsyncValue<DashboardEvent>>(dashboardEventStreamProvider, (previous, next) {
+      next.whenData((event) {
+        if (event is NewSosPendingEvent) {
+          AppToast.show(
+            context,
+            'New SOS — ${event.district}: ${event.description}',
+            kind: AppToastKind.error,
+          );
+        }
+      });
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Predictor Dashboard'),
@@ -153,10 +203,11 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
                             Expanded(
                               child: DistrictDropdown(
                                 value: _district,
-                                label: 'City',
+                                label: 'District',
                                 onChanged: (v) {
                                   setState(() => _district = v);
                                   _load();
+                                  _loadKerala();
                                 },
                               ),
                             ),
@@ -172,8 +223,33 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
                             ),
                           ],
                         ),
-                        const SectionHeader(title: '4-Pillar Meteorological HUD'),
-                        _FourPillarHud(telemetry: _data!.telemetry),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Expanded(child: SectionHeader(title: '4-Pillar Meteorological HUD')),
+                            IconButton(
+                              onPressed: _keralaLoading ? null : _loadKerala,
+                              icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
+                              tooltip: 'Refresh live telemetry',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        if (_keralaLoading && _keralaData == null)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: AppSpacing.section),
+                            child: Center(child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2.4)),
+                          )
+                        else if (_keralaError != null && _keralaData == null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                            child: Text(_keralaError!, style: AppTypography.body(color: AppColors.textSecondary)),
+                          )
+                        else if (_keralaData != null) ...[
+                          _FourPillarHud(pillars: _keralaData!.telemetryPillars),
+                          const SizedBox(height: AppSpacing.sm),
+                          _TopFactorsChips(factors: _keralaData!.topFactors, riskLevel: _keralaData!.riskLevel),
+                        ],
                         const SectionHeader(title: 'Inundation Map'),
                         _InundationMap(
                           frame: _data!.simulationFrames.isNotEmpty ? _data!.simulationFrames[_frameIndex] : null,
@@ -275,44 +351,88 @@ class _ScenarioToggle extends StatelessWidget {
   }
 }
 
-/// The 4-Pillar HUD: Satellite / Doppler Radar / Ground AWS / NWP Model,
-/// arranged 2x2 per PS 26071's mandated 4 meteorological feeds.
+/// The 4-Pillar HUD: Satellite / Doppler Radar / Ground AWS / NWP Model —
+/// bound directly to POST /api/ml/predict-kerala's `telemetry_pillars`,
+/// the live per-district feed (not the scenario-fixed inundation-simulate
+/// telemetry the older build of this HUD used to show).
 class _FourPillarHud extends StatelessWidget {
-  final FourPillarTelemetry telemetry;
-  const _FourPillarHud({required this.telemetry});
+  final KeralaTelemetryPillars pillars;
+  const _FourPillarHud({required this.pillars});
 
   @override
   Widget build(BuildContext context) {
+    final satellite = pillars.satelliteInsat3dr;
+    final radar = pillars.radarDwr;
+    final aws = pillars.observationalAws;
+    final nwp = pillars.nwpForecast;
     return StatGrid(cards: [
       StatCard(
         label: 'Satellite (INSAT-3DR)',
-        value: '${telemetry.cloudTopTempKelvin.toStringAsFixed(1)}K',
-        trend: 'Rain rate ${telemetry.satelliteRainRateMmHr.toStringAsFixed(1)} mm/hr',
+        value: '${satellite.cloudTopTempC.toStringAsFixed(1)}°C',
+        trend: 'Cloud cover ${satellite.cloudCoverPct.toStringAsFixed(0)}%',
         icon: Icons.satellite_alt_outlined,
         accent: AppColors.info,
       ),
       StatCard(
         label: 'Doppler Radar (DWR)',
-        value: '${telemetry.radarReflectivityDbz.toStringAsFixed(1)} dBZ',
-        trend: 'Echo top ${telemetry.radarEchoTopKm.toStringAsFixed(1)} km',
+        value: '${radar.reflectivityDbz.toStringAsFixed(1)} dBZ',
+        trend: '${radar.echoIntensity} echo intensity',
         icon: Icons.radar_rounded,
         accent: AppColors.warning,
       ),
       StatCard(
         label: 'Ground AWS (IMD)',
-        value: '${telemetry.awsRainRateMmHr.toStringAsFixed(1)} mm/hr',
-        trend: '24h cumulative ${telemetry.awsCumulative24hMm.toStringAsFixed(1)} mm',
+        value: '${aws.currentRainRateMmh.toStringAsFixed(1)} mm/hr',
+        trend: '${aws.temperatureC.toStringAsFixed(0)}°C · ${aws.humidityPct.toStringAsFixed(0)}% humidity',
         icon: Icons.water_drop_outlined,
         accent: AppColors.accent,
       ),
       StatCard(
         label: 'NWP Model (NCMRWF)',
-        value: '${telemetry.nwpPredictedPrecipMm.toStringAsFixed(1)} mm',
-        trend: '${telemetry.nwpLeadTimeHours}h forecast precipitation',
+        value: '${nwp.forecast72hAccumMm.toStringAsFixed(1)} mm',
+        trend: '72h forecast precipitation',
         icon: Icons.insights_rounded,
         accent: AppColors.dangerStrong,
       ),
     ]);
+  }
+}
+
+/// `top_factors` from POST /api/ml/predict-kerala as a chip row — each
+/// factor string is already human-readable (translated server-side via
+/// PS71_TERMINOLOGY_MAP), so this just renders them, not the raw array.
+class _TopFactorsChips extends StatelessWidget {
+  final List<String> factors;
+  final String riskLevel;
+  const _TopFactorsChips({required this.factors, required this.riskLevel});
+
+  @override
+  Widget build(BuildContext context) {
+    if (factors.isEmpty) return const SizedBox.shrink();
+    final color = AppColors.alertLevelColor(riskLevel == 'CRITICAL' ? 'RED' : riskLevel == 'WARNING' ? 'ORANGE' : 'GREEN');
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final factor in factors)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: color.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.priority_high_rounded, size: 13, color: color),
+                const SizedBox(width: 5),
+                Text(factor, style: AppTypography.label(color: color).copyWith(fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -341,7 +461,7 @@ class _InundationMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metro = NationalMetros.byName(district);
+    final dist = KeralaDistricts.byName(district);
     final ring = frame?.polygonRing ?? const <LatLng>[];
     final depthColor = AppColors.depthColor(frame?.waterDepthMeters ?? 0);
 
@@ -352,7 +472,7 @@ class _InundationMap extends StatelessWidget {
         child: Stack(
           children: [
             FlutterMap(
-              options: MapOptions(initialCenter: metro.center, initialZoom: 13, minZoom: 4, maxZoom: 17),
+              options: MapOptions(initialCenter: dist.center, initialZoom: 13, minZoom: 4, maxZoom: 17),
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',

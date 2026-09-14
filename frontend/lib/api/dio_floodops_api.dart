@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import '../core/constants/national_metros.dart';
+import '../core/constants/kerala_districts.dart';
 import 'floodops_api.dart';
 
 /// Real backend implementation of [PreciopsApi], talking to the Preciops
@@ -560,7 +560,7 @@ class DioPreciopsApi implements PreciopsApi {
   // helpers
   // ---------------------------------------------------------------------
 
-  MetroProfile _nearestDistrict(double lat, double lng) => NationalMetros.nearest(lat, lng);
+  KeralaDistrict _nearestDistrict(double lat, double lng) => KeralaDistricts.nearest(lat, lng);
 
   double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
     const r = 6371000.0;
@@ -639,6 +639,20 @@ class DioPreciopsApi implements PreciopsApi {
   }
 
   @override
+  Future<KeralaPredictionResponse> predictKerala({
+    required double lat,
+    required double lon,
+    required String district,
+  }) async {
+    final res = await _dio.post('/api/ml/predict-kerala', data: {
+      'lat': lat,
+      'lon': lon,
+      'district': district,
+    });
+    return KeralaPredictionResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
   Future<BlockedNodesResponse> getBlockedNodes({required String zoneId}) async {
     final res = await _dio.get('/api/v1/routing/blocked-nodes', queryParameters: {'zone_id': zoneId});
     return BlockedNodesResponse.fromJson(res.data as Map<String, dynamic>);
@@ -678,6 +692,30 @@ class DioPreciopsApi implements PreciopsApi {
       'alert_message': alertMessage,
     });
     return SmsBroadcastResult.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  // NOTE: as of this backend snapshot there is no confirmed real route for
+  // a volunteer accepting an assigned task, or for a citizen polling their
+  // dispatched volunteer's live position — both are best-effort calls to
+  // plausible routes below, consistent with this app's existing naming.
+  // Update these once the backend actually exposes the corresponding
+  // endpoints.
+  @override
+  Future<VolunteerTask> acceptTask({required String taskId, required String volunteerName}) async {
+    final res = await _dio.post('/api/volunteers/tasks/$taskId/accept');
+    return VolunteerTask.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<VolunteerLocationSnapshot?> getVolunteerLocationForTicket(String ticketId) async {
+    try {
+      final res = await _dio.get('/api/reports/$ticketId/volunteer-location');
+      if (res.data == null) return null;
+      return VolunteerLocationSnapshot.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
   @override

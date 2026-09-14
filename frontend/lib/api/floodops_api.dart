@@ -11,6 +11,7 @@ import 'models/voice_models.dart';
 import 'models/alert_models.dart';
 import 'models/admin_report_models.dart';
 import 'models/inundation_models.dart';
+import 'models/kerala_telemetry_models.dart';
 
 export 'models/auth_models.dart';
 export 'models/report_models.dart';
@@ -23,6 +24,7 @@ export 'models/voice_models.dart';
 export 'models/alert_models.dart';
 export 'models/admin_report_models.dart';
 export 'models/inundation_models.dart';
+export 'models/kerala_telemetry_models.dart';
 
 /// The single contract every screen in this app talks to. Every mocked
 /// endpoint here mirrors a real FastAPI route documented in
@@ -100,11 +102,21 @@ abstract class PreciopsApi {
   Future<AdminReport> assignReportToVolunteer(int reportId, int volunteerId);
 
   // 14. PS 26071 — Heavy rainfall early warning & inundation prediction
-  // (GET /api/v1/inundation/simulate). Predictor Dashboard's primary feed:
-  // the 4-Pillar HUD, the inundation polygon, and the 4-frame time-lapse.
+  // (GET /api/v1/inundation/simulate). Predictor Dashboard's inundation
+  // polygon + 4-frame time-lapse feed.
   Future<InundationSimulationResponse> getInundationSimulation({
     required String district,
     required String scenario, // 'NORMAL' or 'EXTREME_EVENT'
+  });
+
+  // 20. PS 71 — live Kerala telemetry (POST /api/ml/predict-kerala),
+  // synthesized server-side from Open-Meteo via Marshall-Palmer (radar)
+  // and cloud-cover mapping (satellite). Predictor Dashboard's 4-Pillar
+  // HUD + top-risk-factor chips.
+  Future<KeralaPredictionResponse> predictKerala({
+    required double lat,
+    required double lon,
+    required String district,
   });
 
   // 15. Evacuation routing — blocked street bounding boxes for a given
@@ -141,6 +153,17 @@ abstract class PreciopsApi {
     required double observedWaterDepthMeters,
     required String description,
   });
+
+  // 21. Volunteer Hub "Accept" action — transitions an assigned task to
+  // en-route and notifies the reporting citizen (VolunteerEnRouteEvent on
+  // dashboardEventStream) that a volunteer is now on the way.
+  Future<VolunteerTask> acceptTask({required String taskId, required String volunteerName});
+
+  // 22. Citizen-side live tracking of the volunteer dispatched to their own
+  // ticket, once en route — polled every few seconds while a ticket has an
+  // accepted volunteer. Returns null once there's nothing to track (no
+  // acceptance yet, or the task was never assigned).
+  Future<VolunteerLocationSnapshot?> getVolunteerLocationForTicket(String ticketId);
 
   void dispose();
 }

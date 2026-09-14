@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'providers/api_base_url_provider.dart';
 import 'providers/api_provider.dart';
 import 'providers/service_providers.dart';
 import 'providers/stream_providers.dart';
 import 'services/fcm_service.dart';
+import 'services/secure_storage_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,8 +23,17 @@ Future<void> main() async {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
+  // Restores a dev-set backend URL override (see Profile > Backend Server
+  // (Dev)) so a physical-device tester doesn't have to re-enter their
+  // machine's LAN IP after every app restart.
+  final savedBaseUrlOverride = await SecureStorageService().readApiBaseUrlOverride();
+
   runApp(ProviderScope(
-    overrides: [firebaseReadyProvider.overrideWithValue(firebaseReady)],
+    overrides: [
+      firebaseReadyProvider.overrideWithValue(firebaseReady),
+      if (savedBaseUrlOverride != null && savedBaseUrlOverride.isNotEmpty)
+        apiBaseUrlOverrideProvider.overrideWith((ref) => savedBaseUrlOverride),
+    ],
     child: const PreciopsApp(),
   ));
 }

@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../core/constants/national_metros.dart';
+import '../../core/constants/kerala_districts.dart';
 import '../floodops_api.dart';
-import 'national_mock_data.dart';
+import 'kerala_mock_data.dart';
 
 /// Fully self-contained mock of the FastAPI backend described in
 /// features.docx. Every method has a small artificial delay so loading
@@ -23,6 +24,17 @@ class MockPreciopsApi implements PreciopsApi {
 
   final List<ReportSummary> _reports = [];
   ShelterFeatureCollection? _sheltersCache;
+
+  // Citizen SOS -> official assignment -> volunteer accept -> citizen
+  // tracking pipeline. `_adminReportTicketIds` links an AdminReport's
+  // numeric id back to the citizen-facing ticketId it was filed under, so
+  // an official's assignment can be traced through to the right volunteer
+  // task and the right citizen dashboard.
+  int _nextAdminReportId = 504;
+  final Map<int, String> _adminReportTicketIds = {};
+  List<VolunteerTask>? _volunteerTasks;
+  final Map<String, LatLng> _enRouteVolunteerPosition = {};
+  final Map<String, Timer> _enRouteTimers = {};
 
   final List<PendingAlert> _pendingAlerts = [
     PendingAlert(
@@ -150,6 +162,7 @@ class MockPreciopsApi implements PreciopsApi {
       reporterAlias: 'You',
     );
     _reports.insert(0, summary);
+    _registerAdminReport(summary);
     _pushDashboardEvent(NewSosPendingEvent(
       ticketId: summary.ticketId,
       latitude: summary.latitude,
@@ -215,6 +228,7 @@ class MockPreciopsApi implements PreciopsApi {
       reporterAlias: 'You',
     );
     _reports.insert(0, summary);
+    _registerAdminReport(summary);
     _pushDashboardEvent(NewSosPendingEvent(
       ticketId: summary.ticketId,
       latitude: lat,
@@ -224,6 +238,29 @@ class MockPreciopsApi implements PreciopsApi {
       timestamp: DateTime.now(),
     ));
     return summary;
+  }
+
+  /// Mirrors a just-filed citizen report into the official-facing
+  /// [_adminReports] list (`GET /api/officials/reports`) so it's actually
+  /// visible to dispatch, and remembers the citizen ticketId it came from
+  /// so [assignReportToVolunteer] can carry that link through to the
+  /// volunteer task it creates.
+  void _registerAdminReport(ReportSummary summary) {
+    final id = _nextAdminReportId++;
+    _adminReportTicketIds[id] = summary.ticketId;
+    _adminReports.insert(
+      0,
+      AdminReport(
+        id: id,
+        description: summary.description,
+        latitude: summary.latitude,
+        longitude: summary.longitude,
+        status: 'pending',
+        yesCount: 0,
+        noCount: 0,
+        clientTimestamp: summary.reportedAt,
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -272,7 +309,7 @@ class MockPreciopsApi implements PreciopsApi {
   @override
   Future<ShelterFeatureCollection> getSheltersGeoJson() async {
     await _delay(500, 1100);
-    _sheltersCache ??= ShelterFeatureCollection(NationalMockData.generateShelters());
+    _sheltersCache ??= ShelterFeatureCollection(KeralaMockData.generateShelters());
     return _sheltersCache!;
   }
 
@@ -284,7 +321,7 @@ class MockPreciopsApi implements PreciopsApi {
   Future<ChatResponse> sendChatMessage(ChatRequest request) async {
     await _delay(500, 1500);
     final isOnline = _rng.nextDouble() < 0.65;
-    final replies = isOnline ? NationalMockData.chatOnlineReplies : NationalMockData.chatOfflineReplies;
+    final replies = isOnline ? KeralaMockData.chatOnlineReplies : KeralaMockData.chatOfflineReplies;
     final reply = replies[_rng.nextInt(replies.length)];
     return ChatResponse(reply: reply, mode: isOnline ? ChatMode.online : ChatMode.offline);
   }
@@ -296,7 +333,7 @@ class MockPreciopsApi implements PreciopsApi {
   @override
   Future<AgentHubResponse> runAgentHubAnalysis(String district) async {
     await _delay(1200, 2200);
-    final profile = NationalMetros.byName(district);
+    final profile = KeralaDistricts.byName(district);
     final now = DateTime.now();
     final steps = <AgentExecutionStep>[
       AgentExecutionStep(
@@ -371,10 +408,14 @@ class MockPreciopsApi implements PreciopsApi {
   @override
   Future<List<VolunteerTask>> getVolunteerTasks() async {
     await _delay(500, 1100);
-    final districts = NationalMetros.all;
-    return List.generate(NationalMockData.taskTemplates.length, (i) {
-      final district = districts[_rng.nextInt(districts.length)];
-      final template = NationalMockData.taskTemplates[i];
+    // Seeded once and kept mutable from then on (rather than regenerated
+    // every call) so a real officials-assign -> volunteer-accept flow has
+    // somewhere stable to write its state — the earlier version here
+    // returned a fresh random list on every call, which meant "Accept"
+    // could never durably flip a task's status.
+    final seeded = _volunteerTasks ??= List.generate(KeralaMockData.taskTemplates.length, (i) {
+      final district = KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
+      final template = KeralaMockData.taskTemplates[i];
       return VolunteerTask(
         taskId: 'TASK-${(i + 1).toString().padLeft(3, '0')}',
         sosTicketId: 'SOS-${_uuid.v4().substring(0, 8).toUpperCase()}',
@@ -388,6 +429,81 @@ class MockPreciopsApi implements PreciopsApi {
         distanceKm: 0.8 + _rng.nextDouble() * 12,
       );
     });
+    return List.unmodifiable(seeded);
+  }
+
+  /// Volunteer Hub's "Accept" action — flips a still-`assigned` task to
+  /// `enRoute`, tells the reporting citizen via [VolunteerEnRouteEvent],
+  /// and starts moving the volunteer's simulated position toward the
+  /// incident so the citizen has something real to watch on their map.
+  @override
+  Future<VolunteerTask> acceptTask({required String taskId, required String volunteerName}) async {
+    await _delay(300, 700);
+    if (_volunteerTasks == null) await getVolunteerTasks();
+    final tasks = _volunteerTasks!;
+    final index = tasks.indexWhere((t) => t.taskId == taskId);
+    if (index == -1) throw StateError('Task $taskId not found');
+    final current = tasks[index];
+    if (current.status != TaskStatus.assigned) return current;
+    final updated = VolunteerTask(
+      taskId: current.taskId,
+      sosTicketId: current.sosTicketId,
+      district: current.district,
+      latitude: current.latitude,
+      longitude: current.longitude,
+      description: current.description,
+      priority: current.priority,
+      status: TaskStatus.enRoute,
+      assignedAt: current.assignedAt,
+      distanceKm: current.distanceKm,
+    );
+    _volunteerTasks![index] = updated;
+    _pushDashboardEvent(VolunteerEnRouteEvent(
+      ticketId: current.sosTicketId,
+      volunteerId: volunteerName,
+      volunteerName: volunteerName,
+      timestamp: DateTime.now(),
+    ));
+    _startEnRouteSimulation(current);
+    return updated;
+  }
+
+  /// Interpolates a simulated volunteer position from a plausible nearby
+  /// starting point toward the incident location over a couple of
+  /// minutes, so [getVolunteerLocationForTicket] has something moving to
+  /// report back to the citizen watching their map.
+  void _startEnRouteSimulation(VolunteerTask task) {
+    final target = LatLng(task.latitude, task.longitude);
+    final start = LatLng(
+      task.latitude + (_rng.nextDouble() - 0.5) * 0.06,
+      task.longitude + (_rng.nextDouble() - 0.5) * 0.06,
+    );
+    _enRouteVolunteerPosition[task.sosTicketId] = start;
+    const totalTicks = 12;
+    var tick = 0;
+    _enRouteTimers[task.sosTicketId]?.cancel();
+    _enRouteTimers[task.sosTicketId] = Timer.periodic(const Duration(seconds: 3), (timer) {
+      tick++;
+      if (tick >= totalTicks) {
+        _enRouteVolunteerPosition[task.sosTicketId] = target;
+        timer.cancel();
+        _enRouteTimers.remove(task.sosTicketId);
+        return;
+      }
+      final frac = tick / totalTicks;
+      _enRouteVolunteerPosition[task.sosTicketId] = LatLng(
+        start.latitude + (target.latitude - start.latitude) * frac,
+        start.longitude + (target.longitude - start.longitude) * frac,
+      );
+    });
+  }
+
+  @override
+  Future<VolunteerLocationSnapshot?> getVolunteerLocationForTicket(String ticketId) async {
+    await _delay(150, 350);
+    final position = _enRouteVolunteerPosition[ticketId];
+    if (position == null) return null;
+    return VolunteerLocationSnapshot(latitude: position.latitude, longitude: position.longitude);
   }
 
   @override
@@ -403,8 +519,8 @@ class MockPreciopsApi implements PreciopsApi {
         : null;
     final district = report != null
         ? _nearestDistrict(report.latitude, report.longitude)
-        : NationalMetros.all[_rng.nextInt(NationalMetros.all.length)];
-    final alias = NationalMockData.reporterAliases[_rng.nextInt(NationalMockData.reporterAliases.length)];
+        : KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
+    final alias = KeralaMockData.reporterAliases[_rng.nextInt(KeralaMockData.reporterAliases.length)];
     _incomingCallController.add(MaskedCallPayload(
       sosId: report?.ticketId ?? 'SOS-${_uuid.v4().substring(0, 8).toUpperCase()}',
       callerAlias: alias,
@@ -440,7 +556,7 @@ class MockPreciopsApi implements PreciopsApi {
       // a user/citizen action — kept rare here since it's a demo stand-in
       // for an hourly pipeline run finding a district newly high-risk.
       if (_rng.nextDouble() < 0.12) {
-        final district = NationalMetros.all[_rng.nextInt(NationalMetros.all.length)];
+        final district = KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
         final riskScore = 81 + _rng.nextInt(19);
         _dashboardController!.add(HighRiskAlertEvent(
           district: district.name,
@@ -463,11 +579,11 @@ class MockPreciopsApi implements PreciopsApi {
           timestamp: DateTime.now(),
         ));
       } else {
-        final district = NationalMetros.all[_rng.nextInt(NationalMetros.all.length)];
+        final district = KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
         final lat = district.center.latitude + (_rng.nextDouble() - 0.5) * 0.1;
         final lng = district.center.longitude + (_rng.nextDouble() - 0.5) * 0.1;
-        final description = NationalMockData
-            .sosDescriptions[_rng.nextInt(NationalMockData.sosDescriptions.length)];
+        final description = KeralaMockData
+            .sosDescriptions[_rng.nextInt(KeralaMockData.sosDescriptions.length)];
         final summary = ReportSummary(
           ticketId: 'SOS-${_uuid.v4().substring(0, 8).toUpperCase()}',
           description: description,
@@ -479,7 +595,7 @@ class MockPreciopsApi implements PreciopsApi {
           status: ReportStatus.pending,
           reportedAt: DateTime.now(),
           reporterAlias:
-              NationalMockData.reporterAliases[_rng.nextInt(NationalMockData.reporterAliases.length)],
+              KeralaMockData.reporterAliases[_rng.nextInt(KeralaMockData.reporterAliases.length)],
         );
         _reports.insert(0, summary);
         _dashboardController!.add(NewSosPendingEvent(
@@ -529,13 +645,13 @@ class MockPreciopsApi implements PreciopsApi {
     final now = DateTime.now();
     final result = <ReportSummary>[];
     for (var i = 0; i < 9; i++) {
-      final district = NationalMetros.all[_rng.nextInt(NationalMetros.all.length)];
+      final district = KeralaDistricts.all[_rng.nextInt(KeralaDistricts.all.length)];
       final lat = district.center.latitude + (_rng.nextDouble() - 0.5) * 0.12;
       final lng = district.center.longitude + (_rng.nextDouble() - 0.5) * 0.12;
       final confirmCount = _rng.nextInt(3);
       result.add(ReportSummary(
         ticketId: 'SOS-${_uuid.v4().substring(0, 8).toUpperCase()}',
-        description: NationalMockData.sosDescriptions[i % NationalMockData.sosDescriptions.length],
+        description: KeralaMockData.sosDescriptions[i % KeralaMockData.sosDescriptions.length],
         latitude: lat,
         longitude: lng,
         distanceMeters: 200 + _rng.nextDouble() * 4800,
@@ -543,13 +659,13 @@ class MockPreciopsApi implements PreciopsApi {
         falseAlarmCount: _rng.nextInt(2),
         status: confirmCount >= 3 ? ReportStatus.verified : ReportStatus.pending,
         reportedAt: now.subtract(Duration(minutes: 5 + _rng.nextInt(600))),
-        reporterAlias: NationalMockData.reporterAliases[i % NationalMockData.reporterAliases.length],
+        reporterAlias: KeralaMockData.reporterAliases[i % KeralaMockData.reporterAliases.length],
       ));
     }
     return result;
   }
 
-  MetroProfile _nearestDistrict(double lat, double lng) => NationalMetros.nearest(lat, lng);
+  KeralaDistrict _nearestDistrict(double lat, double lng) => KeralaDistricts.nearest(lat, lng);
 
   double _distanceMeters(double lat1, double lng1, double lat2, double lng2) {
     const r = 6371000.0;
@@ -620,6 +736,42 @@ class MockPreciopsApi implements PreciopsApi {
       assignedVolunteerName: volunteer.fullName,
     );
     _adminReports[reportIndex] = updated;
+
+    // Surface the assignment on the volunteer's own task list (so Volunteer
+    // Hub actually shows it) and tell the reporting citizen it happened —
+    // both were previously disconnected from this dispatch action.
+    final ticketId = _adminReportTicketIds[reportId] ?? 'SOS-${reportId.toString().padLeft(6, '0')}';
+    if (_volunteerTasks == null) await getVolunteerTasks();
+    final tasks = _volunteerTasks!;
+    final distanceKm = (volunteer.latitude != null && volunteer.longitude != null)
+        ? const Distance().as(
+            LengthUnit.Kilometer,
+            LatLng(volunteer.latitude!, volunteer.longitude!),
+            LatLng(updated.latitude, updated.longitude),
+          )
+        : 0.0;
+    tasks.insert(
+      0,
+      VolunteerTask(
+        taskId: 'TASK-${DateTime.now().millisecondsSinceEpoch % 100000}',
+        sosTicketId: ticketId,
+        district: _nearestDistrict(updated.latitude, updated.longitude).name,
+        latitude: updated.latitude,
+        longitude: updated.longitude,
+        description: updated.description,
+        priority: TaskPriority.critical,
+        status: TaskStatus.assigned,
+        assignedAt: DateTime.now(),
+        distanceKm: distanceKm,
+      ),
+    );
+
+    _pushDashboardEvent(VolunteerAssignedEvent(
+      ticketId: ticketId,
+      assignedVolunteerId: volunteer.id.toString(),
+      assignedVolunteerName: volunteer.fullName,
+      timestamp: DateTime.now(),
+    ));
     return updated;
   }
 
@@ -628,18 +780,30 @@ class MockPreciopsApi implements PreciopsApi {
     _dashboardTimer?.cancel();
     _dashboardController?.close();
     _incomingCallController.close();
+    for (final timer in _enRouteTimers.values) {
+      timer.cancel();
+    }
   }
 
   // ---------------------------------------------------------------------
   // 14-19. PS 26071 — inundation, routing, protocol, analytics, citizen ops
   // ---------------------------------------------------------------------
 
-  static const Map<String, List<String>> _landmarksByCity = {
-    'Mumbai': ['Hindmata Junction Basin', 'Milan Subway Corridor', 'Gandhi Market (Kings Circle)', 'Sion Station Low-lying Road'],
-    'Chennai': ['Velachery Lake Catchment', 'Madipakkam Ward 188', 'T. Nagar Usman Road Underpass', 'Adyar River Floodplain'],
-    'Delhi': ['ITO Ring Road Underpass', 'Yamuna Bazar Ghat Area', 'Kashmere Gate ISBT Basin', 'Pragati Maidan Corridor'],
-    'Guwahati': ['Rukminigaon GS Road Axis', 'Anil Nagar Canal Overflow Basin', 'Nabin Nagar Low-elevation Sector', 'Zoo Road Downstream Ward'],
+  static const Map<String, List<String>> _landmarksByDistrict = {
+    'Thiruvananthapuram': ['Killi River Basin', 'Vellayani Lake Catchment', 'East Fort Low-lying Ward', 'Karamana River Bridge Corridor'],
+    'Kollam': ['Ashtamudi Lake Fringe', 'Chinnakada Market Basin', 'Kollam Canal Overflow Zone', 'Paravur Backwater Ward'],
+    'Pathanamthitta': ['Pamba River Basin', 'Aranmula Low-lying Ward', 'Ranni Riverside Corridor', 'Kozhencherry Bridge Approach'],
+    'Alappuzha': ['Kuttanad Paddy Basin', 'Punnamada Backwater Ward', 'Alappuzha Canal Network', 'Pathirappally Low-lying Sector'],
+    'Kottayam': ['Kodoor River Basin', 'Kumarakom Backwater Fringe', 'Vembanad Lake Ward', 'Nattakom Low-lying Corridor'],
+    'Idukki': ['Periyar Dam Catchment', 'Cheruthoni Riverside Ward', 'Munnar Landslide-prone Slope', 'Vazhathope Low-elevation Sector'],
     'Ernakulam': ['MG Road Metro Corridor', 'Railway Colony Basin', 'Kaloor Stadium Low-lying Ward', 'Central Broadway Market Ward'],
+    'Thrissur': ['Kole Wetlands Basin', 'Chalakudy River Ward', 'Thrissur Round Low-lying Corridor', 'Ponnani Backwater Fringe'],
+    'Palakkad': ['Bharathapuzha Riverbank Ward', 'Palakkad Town Drainage Basin', 'Kanjikode Low-lying Corridor', 'Malampuzha Dam Catchment'],
+    'Malappuram': ['Chaliyar River Basin', 'Kadalundi Estuary Ward', 'Manjeri Low-lying Corridor', 'Tirur Riverside Sector'],
+    'Kozhikode': ['Korapuzha River Basin', 'Beypore Backwater Ward', 'Kallai River Low-lying Corridor', 'Mavoor Riverside Sector'],
+    'Wayanad': ['Kabini River Basin', 'Vythiri Landslide-prone Slope', 'Panamaram Riverside Ward', 'Mananthavady Low-elevation Corridor'],
+    'Kannur': ['Valapattanam River Basin', 'Thalassery Backwater Ward', 'Anjarakandy Riverside Corridor', 'Payyanur Low-lying Sector'],
+    'Kasaragod': ['Chandragiri River Basin', 'Bekal Coastal Ward', 'Kariangode Riverside Corridor', 'Uppala Low-lying Sector'],
   };
 
   Map<String, dynamic> _polygon(double lat, double lon, double delta) => {
@@ -661,10 +825,10 @@ class MockPreciopsApi implements PreciopsApi {
     required String scenario,
   }) async {
     await _delay(300, 700);
-    final metro = NationalMetros.byName(district);
-    final landmarks = _landmarksByCity[metro.name] ?? const [];
-    final lat = metro.center.latitude;
-    final lon = metro.center.longitude;
+    final dist = KeralaDistricts.byName(district);
+    final landmarks = _landmarksByDistrict[dist.name] ?? const [];
+    final lat = dist.center.latitude;
+    final lon = dist.center.longitude;
     final extreme = scenario.toUpperCase() == 'EXTREME_EVENT';
 
     final steps = extreme
@@ -697,7 +861,7 @@ class MockPreciopsApi implements PreciopsApi {
     final zones = extreme
         ? [
             InundationPolygon(
-              zoneId: 'INUND-PEAK-${metro.name.substring(0, 3).toUpperCase()}-01',
+              zoneId: 'INUND-PEAK-${dist.name.substring(0, 3).toUpperCase()}-01',
               severity: 'CRITICAL',
               avgWaterDepthMeters: peak.depth,
               affectedLandmarks: landmarks,
@@ -708,7 +872,7 @@ class MockPreciopsApi implements PreciopsApi {
 
     return InundationSimulationResponse(
       timestamp: DateTime.now().toUtc().toIso8601String(),
-      district: metro.name,
+      district: dist.name,
       leadTimeWarning: extreme ? '0 - 3 Hours Nowcast (Immediate Inundation Expected)' : 'No Extreme Inundation Threat Detected',
       alertLevel: extreme ? 'RED' : 'GREEN',
       telemetry: FourPillarTelemetry.fromJson({
@@ -718,12 +882,12 @@ class MockPreciopsApi implements PreciopsApi {
           'rainfall_hydro_estimator_mm_hr': extreme ? 72.0 : 2.5,
         },
         'radar': {
-          'station': 'Doppler Weather Radar (DWR) ${metro.name}',
+          'station': 'Doppler Weather Radar (DWR) ${dist.name}',
           'reflectivity_dbz': extreme ? 54.2 : 22.0,
           'echo_top_km': extreme ? 15.1 : 4.0,
         },
         'observational_weather': {
-          'station_id': 'IMD-AWS-${metro.name.substring(0, 3).toUpperCase()}-01',
+          'station_id': 'IMD-AWS-${dist.name.substring(0, 3).toUpperCase()}-01',
           'current_rainfall_mm_hr': extreme ? 72.0 : 1.5,
           'cumulative_24h_rainfall_mm': extreme ? 188.4 : 10.0,
         },
@@ -736,10 +900,68 @@ class MockPreciopsApi implements PreciopsApi {
       inundationZones: zones,
       simulationFrames: frames,
       advisoryBulletin: extreme
-          ? 'IMD HIGH-SEVERITY BULLETIN (${metro.name.toUpperCase()} METROPOLITAN AREA): Fused Doppler Radar and '
+          ? 'IMD HIGH-SEVERITY BULLETIN (${dist.name.toUpperCase()} DISTRICT): Fused Doppler Radar and '
               'INSAT-3DR imagery confirm intense convective storm activity. Peak street inundation of '
               '${peak.depth}m projected across ${landmarks.take(2).join(', ')} at T+2h.'
-          : 'IMD NORMAL ADVISORY (${metro.name.toUpperCase()}): No convective cloudburst or road inundation conditions detected.',
+          : 'IMD NORMAL ADVISORY (${dist.name.toUpperCase()}): No convective cloudburst or road inundation conditions detected.',
+    );
+  }
+
+  /// Mirrors the backend's Marshall-Palmer/cloud-cover synthesis
+  /// (`derive_four_pillars` in app/data_ingestion.py) closely enough that
+  /// demo mode also shows genuinely different values per Kerala district,
+  /// not a static mock.
+  @override
+  Future<KeralaPredictionResponse> predictKerala({
+    required double lat,
+    required double lon,
+    required String district,
+  }) async {
+    await _delay(300, 700);
+    final seed = district.codeUnits.fold<int>(0, (acc, c) => acc + c);
+    final rainRateMmHr = 2.0 + (seed % 34);
+    final cloudCoverPct = (55 + (seed % 44)).toDouble();
+    final humidityPct = (72 + (seed % 26)).toDouble();
+
+    final z = 200.0 * pow(max(rainRateMmHr, 0.01), 1.6);
+    final radarDbz = (10.0 * (log(z) / ln10)).clamp(12.0, 62.0);
+    final cloudTopTempC = (24.0 - (cloudCoverPct * 0.45) - min(rainRateMmHr * 2.8, 48.0)).clamp(-68.0, 28.0);
+    final riskScore = (rainRateMmHr * 2.1).clamp(2, 96).round();
+
+    return KeralaPredictionResponse(
+      district: district,
+      latitude: lat,
+      longitude: lon,
+      floodRiskScore: riskScore,
+      riskProbability: (riskScore / 100.0),
+      riskLevel: riskScore >= 75 ? 'CRITICAL' : riskScore >= 39 ? 'WARNING' : riskScore >= 15 ? 'ADVISORY' : 'NORMAL',
+      isHighRisk: riskScore >= 75,
+      topFactors: riskScore >= 39
+          ? const ['Observational AWS Data (Ground)', 'NWP Precipitation Forecast']
+          : const ['INSAT-3DR Topography (Satellite)', 'Doppler Weather Radar (Streamflow)'],
+      telemetryPillars: KeralaTelemetryPillars(
+        satelliteInsat3dr: KeralaSatellitePillar(
+          sensor: 'TIR-1 Thermal Infrared',
+          cloudTopTempC: double.parse(cloudTopTempC.toStringAsFixed(1)),
+          cloudCoverPct: double.parse(cloudCoverPct.toStringAsFixed(1)),
+          convectiveCloudburstDetected: cloudTopTempC <= -42.0,
+        ),
+        radarDwr: KeralaRadarPillar(
+          band: 'S-band / C-band Pulse Doppler',
+          reflectivityDbz: double.parse(radarDbz.toStringAsFixed(1)),
+          echoIntensity: radarDbz >= 48 ? 'EXTREME' : radarDbz >= 32 ? 'MODERATE' : 'LOW',
+        ),
+        observationalAws: KeralaAwsPillar(
+          source: 'IMD Ground Station Telemetry',
+          currentRainRateMmh: double.parse(rainRateMmHr.toStringAsFixed(2)),
+          temperatureC: 20.0 + (seed % 10),
+          humidityPct: humidityPct,
+        ),
+        nwpForecast: KeralaNwpPillar(
+          model: 'WRF-NCMRWF High-Res Dynamic Core',
+          forecast72hAccumMm: double.parse((rainRateMmHr * 9.5).toStringAsFixed(1)),
+        ),
+      ),
     );
   }
 
@@ -747,12 +969,12 @@ class MockPreciopsApi implements PreciopsApi {
   Future<BlockedNodesResponse> getBlockedNodes({required String zoneId}) async {
     await _delay(200, 500);
     final upper = zoneId.toUpperCase();
-    final metro = NationalMetros.all.firstWhere(
-      (m) => upper.contains(m.name.substring(0, 3).toUpperCase()),
-      orElse: () => NationalMetros.all.first,
+    final dist = KeralaDistricts.all.firstWhere(
+      (d) => upper.contains(d.name.substring(0, 3).toUpperCase()),
+      orElse: () => KeralaDistricts.all.first,
     );
-    final lat = metro.center.latitude;
-    final lon = metro.center.longitude;
+    final lat = dist.center.latitude;
+    final lon = dist.center.longitude;
     return BlockedNodesResponse(
       zoneId: zoneId,
       blockedBoundingBoxes: [
@@ -761,7 +983,7 @@ class MockPreciopsApi implements PreciopsApi {
           maxLat: lat - 0.002,
           minLon: lon - 0.008,
           maxLon: lon + 0.002,
-          description: '${_landmarksByCity[metro.name]?.first ?? 'Main corridor'} - Impassable',
+          description: '${_landmarksByDistrict[dist.name]?.first ?? 'Main corridor'} - Impassable',
         ),
       ],
       action: 'Set graph node weights inside these bounding boxes to infinity.',
@@ -831,15 +1053,15 @@ class MockPreciopsApi implements PreciopsApi {
       currentHourlyTrend: const [15.0, 32.5, 52.0, 72.0, 48.0, 22.0],
       historicalBenchmarks: const [
         HistoricalStormBenchmark(
-          eventName: 'Mumbai Historic Cloudburst',
-          year: 2005,
+          eventName: 'Kerala 2018 Deluge (Idukki/Ernakulam)',
+          year: 2018,
           peakRainfallMmHr: 94.0,
           maxRadarDbz: 58.5,
           hourlyTrend: [20.0, 45.0, 85.0, 94.0, 60.0, 30.0],
         ),
         HistoricalStormBenchmark(
-          eventName: 'Chennai Urban Flood Event',
-          year: 2015,
+          eventName: 'Kuttanad Backwater Flood Event',
+          year: 2019,
           peakRainfallMmHr: 82.0,
           maxRadarDbz: 52.0,
           hourlyTrend: [10.0, 25.0, 65.0, 82.0, 55.0, 20.0],

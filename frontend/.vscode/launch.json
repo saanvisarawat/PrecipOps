@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "FloodOps (Real Backend)",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "args": [
+                "--dart-define=USE_MOCK_API=false",
+                "--dart-define=API_BASE_URL=http://192.168.1.3:8000",
+                "--dart-define=WS_BASE_URL=ws://192.168.1.3:8000"
+            ]
+        },
+        {
+            "name": "FloodOps (Mock / Demo)",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart"
+        }
+    ]
+}

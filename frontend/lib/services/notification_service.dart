@@ -104,4 +104,41 @@ class NotificationService {
       // (e.g. Windows) — fail silently rather than crash the caller.
     }
   }
+
+  /// Alerts an official the moment a citizen files a new SOS
+  /// (`NewSosPendingEvent` — see [sosPushNotifierProvider] in
+  /// `stream_providers.dart`), so dispatch doesn't depend on someone
+  /// happening to have the SOS Dashboard open.
+  Future<void> showSosAlert({
+    required String title,
+    required String body,
+  }) async {
+    if (!_initialized) await init();
+    if (kIsWeb) {
+      showWebNotification(title: title, body: body);
+      return;
+    }
+    const androidDetails = AndroidNotificationDetails(
+      'new_sos_reports',
+      'New SOS Reports',
+      channelDescription: 'Alerts officials the moment a citizen files a new SOS report',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: DarwinNotificationDetails(),
+    );
+    try {
+      await _localNotifications.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title,
+        body,
+        details,
+      );
+    } catch (_) {
+      // Desktop platforms with no flutter_local_notifications backend
+      // (e.g. Windows) — fail silently rather than crash the caller.
+    }
+  }
 }

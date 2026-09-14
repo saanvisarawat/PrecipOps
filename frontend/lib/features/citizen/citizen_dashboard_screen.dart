@@ -1,27 +1,32 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../api/models/dashboard_event_models.dart';
 import '../../api/models/inundation_models.dart';
 import '../../api/models/shelter_models.dart';
-import '../../core/constants/national_metros.dart';
+import '../../core/constants/kerala_districts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../providers/api_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/service_providers.dart';
-import '../../widgets/app_bottom_sheet.dart';
+import '../../providers/sos_provider.dart';
+import '../../providers/stream_providers.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/district_dropdown.dart';
 import '../../widgets/map_pin_marker.dart';
 import '../../widgets/section_header.dart';
+import '../../widgets/sos_button.dart';
 import '../../widgets/status_badge.dart';
-import '../dashboard/widgets/sos_composer_sheet.dart';
+import '../dashboard/widgets/sos_flow.dart';
 import '../navigation/models/route_option.dart';
 import '../navigation/models/travel_mode.dart';
 import '../navigation/providers/navigation_providers.dart';
@@ -38,7 +43,7 @@ class CitizenDashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen> {
-  String _district = NationalMetros.all.first.name;
+  String _district = KeralaDistricts.defaultName;
   Position? _position;
   InundationSimulationResponse? _inundation;
   bool _loading = true;
@@ -58,6 +63,15 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
   final _descriptionController = TextEditingController();
   bool _submittingReport = false;
 
+  // Citizen-side half of the SOS -> official -> volunteer pipeline: once
+  // this citizen's own SOS is filed, its ticket is tracked here so the
+  // dashboard can react the moment a volunteer is assigned and, once they
+  // accept, poll their live position.
+  String? _activeSosTicketId;
+  String? _enRouteVolunteerName;
+  LatLng? _volunteerLocation;
+  Timer? _volunteerPollTimer;
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +82,7 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
   void dispose() {
     _depthController.dispose();
     _descriptionController.dispose();
+    _volunteerPollTimer?.cancel();
     super.dispose();
   }
 
@@ -77,13 +92,45 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
       if (mounted) {
         setState(() {
           _position = pos;
-          _district = NationalMetros.nearest(pos.latitude, pos.longitude).name;
+          _district = KeralaDistricts.nearest(pos.latitude, pos.longitude).name;
         });
       }
     } catch (_) {
       // No GPS fix — the dashboard still works with the manually-picked city.
     }
     await _load();
+  }
+
+  Future<void> _submitSos() async {
+    final outcome = await submitSosViaComposer(context, ref);
+    if (outcome == null || outcome.kind != SosOutcomeKind.submitted || !mounted) return;
+    setState(() {
+      _activeSosTicketId = outcome.ticketId;
+      _enRouteVolunteerName = null;
+      _volunteerLocation = null;
+    });
+    _volunteerPollTimer?.cancel();
+  }
+
+  void _startVolunteerLocationPolling() {
+    _volunteerPollTimer?.cancel();
+    _pollVolunteerLocation();
+    _volunteerPollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollVolunteerLocation());
+  }
+
+  Future<void> _pollVolunteerLocation() async {
+    final ticketId = _activeSosTicketId;
+    if (ticketId == null) return;
+    try {
+      final api = ref.read(preciopsApiProvider);
+      final snapshot = await api.getVolunteerLocationForTicket(ticketId);
+      if (!mounted) return;
+      if (snapshot != null) {
+        setState(() => _volunteerLocation = LatLng(snapshot.latitude, snapshot.longitude));
+      }
+    } catch (_) {
+      // Best-effort tracking — a failed poll just tries again next tick.
+    }
   }
 
   Future<void> _load() async {
@@ -124,8 +171,8 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
       final shelters = (await api.getSheltersGeoJson()).features;
       if (shelters.isEmpty) throw Exception('No shelters available');
 
-      final metro = NationalMetros.byName(_district);
-      final origin = _position != null ? LatLng(_position!.latitude, _position!.longitude) : metro.center;
+      final selected = KeralaDistricts.byName(_district);
+      final origin = _position != null ? LatLng(_position!.latitude, _position!.longitude) : selected.center;
 
       const dist = Distance();
       shelters.sort((a, b) => dist
@@ -167,8 +214,8 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
     setState(() => _submittingReport = true);
     try {
       final api = ref.read(preciopsApiProvider);
-      final lat = _position?.latitude ?? NationalMetros.byName(_district).center.latitude;
-      final lng = _position?.longitude ?? NationalMetros.byName(_district).center.longitude;
+      final lat = _position?.latitude ?? KeralaDistricts.byName(_district).center.latitude;
+      final lng = _position?.longitude ?? KeralaDistricts.byName(_district).center.longitude;
       final result = await api.submitGroundTruth(
         district: _district,
         lat: lat,
@@ -192,6 +239,29 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
     final auth = ref.watch(authProvider);
     final evacuate = _insideZone;
 
+    // A volunteer-assigned/en-route event only means something to whichever
+    // citizen filed that exact ticket — every other citizen's dashboard is
+    // also listening on this same shared stream, so both checks below are
+    // filtered to `_activeSosTicketId` before reacting.
+    ref.listen<AsyncValue<DashboardEvent>>(dashboardEventStreamProvider, (previous, next) {
+      next.whenData((event) {
+        if (event is VolunteerAssignedEvent && event.ticketId == _activeSosTicketId) {
+          AppToast.show(
+            context,
+            event.assignedVolunteerName != null
+                ? '${event.assignedVolunteerName} has been assigned to your SOS.'
+                : 'A volunteer has been assigned to your SOS.',
+            kind: AppToastKind.success,
+          );
+        } else if (event is VolunteerEnRouteEvent && event.ticketId == _activeSosTicketId) {
+          final name = event.volunteerName ?? 'A volunteer';
+          setState(() => _enRouteVolunteerName = name);
+          AppToast.show(context, '$name is on the way!', kind: AppToastKind.success);
+          _startVolunteerLocationPolling();
+        }
+      });
+    });
+
     return RefreshIndicator(
       onRefresh: _load,
       color: AppColors.accent,
@@ -208,27 +278,33 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
                     AppSpacing.xxl,
                   ),
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text('Hi, ${auth.user?.fullName ?? 'there'}', style: AppTypography.screenTitle()),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.emergency_share_rounded, color: AppColors.dangerStrong),
-                          tooltip: 'Report SOS',
-                          onPressed: () => AppBottomSheet.show(context, builder: (_) => const SosComposerSheet()),
-                        ),
-                      ],
+                    Text('Hi, ${auth.user?.fullName ?? 'there'}', style: AppTypography.screenTitle()),
+                    const SizedBox(height: AppSpacing.md),
+                    Center(
+                      child: Column(
+                        children: [
+                          SosButton(onPressed: _submitSos, isBusy: ref.watch(sosControllerProvider)),
+                          const SizedBox(height: 10),
+                          Text('Hold to send an emergency SOS', style: AppTypography.caption(color: AppColors.textSecondary)),
+                        ],
+                      ),
                     ),
+                    if (_enRouteVolunteerName != null) ...[
+                      const SizedBox(height: AppSpacing.section),
+                      _VolunteerEnRouteCard(
+                        volunteerName: _enRouteVolunteerName!,
+                        volunteerLocation: _volunteerLocation,
+                        citizenPosition: _position,
+                      ),
+                    ],
                     if (evacuate) ...[
                       const SizedBox(height: AppSpacing.sm),
                       _EvacuateBanner(onGetRoute: _routing ? null : _routeToShelter),
                     ],
-                    const SizedBox(height: AppSpacing.sm),
+                    const SizedBox(height: AppSpacing.section),
                     DistrictDropdown(
                       value: _district,
-                      label: 'City',
+                      label: 'District',
                       onChanged: (v) {
                         setState(() => _district = v);
                         _load();
@@ -340,6 +416,88 @@ class _EvacuateBanner extends StatelessWidget {
   }
 }
 
+/// Shown the moment a volunteer accepts this citizen's own SOS
+/// ([VolunteerEnRouteEvent]) — a live-ish map tracking their reported
+/// position (polled via `getVolunteerLocationForTicket`) alongside the
+/// citizen's own, so "on the way" is something the citizen can actually
+/// watch rather than just a one-time toast.
+class _VolunteerEnRouteCard extends StatelessWidget {
+  final String volunteerName;
+  final LatLng? volunteerLocation;
+  final Position? citizenPosition;
+
+  const _VolunteerEnRouteCard({
+    required this.volunteerName,
+    required this.volunteerLocation,
+    required this.citizenPosition,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final citizenPoint = citizenPosition != null ? LatLng(citizenPosition!.latitude, citizenPosition!.longitude) : null;
+    final center = volunteerLocation ?? citizenPoint ?? KeralaDistricts.defaultDistrict.center;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.directions_run_rounded, color: AppColors.accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('$volunteerName is on the way', style: AppTypography.cardTitle()),
+              ),
+              const StatusBadge(label: 'En Route', color: AppColors.accent, icon: Icons.circle, dot: true),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          if (volunteerLocation == null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Text('Locating volunteer…', style: AppTypography.body(color: AppColors.textSecondary)),
+            )
+          else
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                height: 180,
+                child: FlutterMap(
+                  options: MapOptions(initialCenter: center, initialZoom: 13, minZoom: 4, maxZoom: 17),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.floodops.preciops_frontend',
+                    ),
+                    if (citizenPoint != null && volunteerLocation != null)
+                      PolylineLayer(polylines: [
+                        Polyline(points: [volunteerLocation!, citizenPoint], strokeWidth: 3, color: AppColors.accent),
+                      ]),
+                    MarkerLayer(markers: [
+                      if (citizenPoint != null)
+                        Marker(
+                          point: citizenPoint,
+                          width: 30,
+                          height: 30,
+                          child: const MapPinMarker(icon: Icons.navigation_rounded, color: AppColors.info, size: 28, pulsing: true),
+                        ),
+                      if (volunteerLocation != null)
+                        Marker(
+                          point: volunteerLocation!,
+                          width: 34,
+                          height: 34,
+                          child: const MapPinMarker(icon: Icons.directions_run_rounded, color: AppColors.accent, size: 30, pulsing: true),
+                        ),
+                    ]),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Replaces the old risk-score gauge everywhere it used to appear: water
 /// depth, submerged landmarks, alert level + lead time — nothing else.
 class _InundationWarningPanel extends StatelessWidget {
@@ -387,7 +545,7 @@ class _CitizenMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metro = NationalMetros.byName(district);
+    final dist = KeralaDistricts.byName(district);
     final zone = data.inundationZones.isNotEmpty ? data.inundationZones.first : null;
     final ring = zone?.polygonRing ?? const <LatLng>[];
     final depthColor = AppColors.depthColor(zone?.avgWaterDepthMeters ?? 0);
@@ -398,7 +556,7 @@ class _CitizenMap extends StatelessWidget {
         height: 280,
         child: FlutterMap(
           options: MapOptions(
-            initialCenter: position != null ? LatLng(position!.latitude, position!.longitude) : metro.center,
+            initialCenter: position != null ? LatLng(position!.latitude, position!.longitude) : dist.center,
             initialZoom: 13,
             minZoom: 4,
             maxZoom: 17,

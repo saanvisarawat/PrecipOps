@@ -6,7 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../../core/constants/national_metros.dart';
+import '../../../core/constants/kerala_districts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../providers/connectivity_provider.dart';
@@ -140,8 +140,8 @@ class _NavigationMapScreenState extends ConsumerState<NavigationMapScreen> with 
               return FlutterMap(
                 mapController: _mapController,
                 options: MapOptions(
-                  initialCenter: widget.initialDestination?.point ?? position ?? NationalMetros.indiaMapCenter,
-                  initialZoom: position != null ? 15.5 : NationalMetros.indiaMapDefaultZoom,
+                  initialCenter: widget.initialDestination?.point ?? position ?? KeralaDistricts.keralaMapCenter,
+                  initialZoom: position != null ? 15.5 : KeralaDistricts.keralaMapDefaultZoom,
                   minZoom: 5,
                   maxZoom: 19,
                   onPositionChanged: (camera, hasGesture) {

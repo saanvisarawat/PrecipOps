@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../api/models/admin_report_models.dart';
 import '../../api/models/auth_models.dart';
@@ -84,10 +85,39 @@ class _SosDashboardBodyState extends ConsumerState<_SosDashboardBody> {
     });
   }
 
+  /// Nearest-online-first: available volunteers with a known location sort
+  /// by distance to the incident; available volunteers with no location
+  /// come next; everyone else (busy/offline) sorts last. This is what
+  /// "assign the nearest online volunteer" means for the manual-dispatch
+  /// fallback — automatic allocation already does this server-side at
+  /// report-creation time (see `dio_floodops_api.dart`'s NOTE on
+  /// `createReport`).
+  List<AdminVolunteer> _sortedByProximity(AdminReport report) {
+    final origin = LatLng(report.latitude, report.longitude);
+    const distance = Distance();
+    double? distanceKm(AdminVolunteer v) => (v.latitude != null && v.longitude != null)
+        ? distance.as(LengthUnit.Kilometer, origin, LatLng(v.latitude!, v.longitude!))
+        : null;
+    final sorted = [..._volunteers];
+    sorted.sort((a, b) {
+      if (a.isAvailable != b.isAvailable) return a.isAvailable ? -1 : 1;
+      final da = distanceKm(a);
+      final db = distanceKm(b);
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da.compareTo(db);
+    });
+    return sorted;
+  }
+
   Future<void> _pickVolunteerAndAssign(AdminReport report) async {
     final volunteer = await AppBottomSheet.show<AdminVolunteer>(
       context,
-      builder: (context) => _VolunteerPickerSheet(volunteers: _volunteers),
+      builder: (context) => _VolunteerPickerSheet(
+        volunteers: _sortedByProximity(report),
+        origin: LatLng(report.latitude, report.longitude),
+      ),
     );
     if (volunteer == null || !mounted) return;
 
@@ -216,7 +246,12 @@ class _SosDashboardBodyState extends ConsumerState<_SosDashboardBody> {
 
 class _VolunteerPickerSheet extends StatelessWidget {
   final List<AdminVolunteer> volunteers;
-  const _VolunteerPickerSheet({required this.volunteers});
+  final LatLng origin;
+  const _VolunteerPickerSheet({required this.volunteers, required this.origin});
+
+  double? _distanceKm(AdminVolunteer v) => (v.latitude != null && v.longitude != null)
+      ? const Distance().as(LengthUnit.Kilometer, origin, LatLng(v.latitude!, v.longitude!))
+      : null;
 
   @override
   Widget build(BuildContext context) {
@@ -225,6 +260,11 @@ class _VolunteerPickerSheet extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Dispatch to', style: AppTypography.sectionTitle()),
+        const SizedBox(height: 2),
+        Text(
+          'Sorted by nearest available volunteer first',
+          style: AppTypography.caption(color: AppColors.textSecondary),
+        ),
         const SizedBox(height: AppSpacing.sm),
         if (volunteers.isEmpty)
           Padding(
@@ -240,6 +280,11 @@ class _VolunteerPickerSheet extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.xs),
               itemBuilder: (context, i) {
                 final v = volunteers[i];
+                final km = _distanceKm(v);
+                final subtitleParts = [
+                  if (km != null) '${km.toStringAsFixed(1)} km away',
+                  if (v.skills != null) v.skills!,
+                ];
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   onTap: () => Navigator.of(context).pop(v),
@@ -250,7 +295,9 @@ class _VolunteerPickerSheet extends StatelessWidget {
                     dot: true,
                   ),
                   title: Text(v.fullName, style: AppTypography.body()),
-                  subtitle: v.skills != null ? Text(v.skills!, style: AppTypography.caption(color: AppColors.textTertiary)) : null,
+                  subtitle: subtitleParts.isEmpty
+                      ? null
+                      : Text(subtitleParts.join(' • '), style: AppTypography.caption(color: AppColors.textTertiary)),
                 );
               },
             ),

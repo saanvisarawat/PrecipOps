@@ -7,7 +7,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../api/models/inundation_models.dart';
 import '../../api/models/shelter_models.dart';
-import '../../core/constants/national_metros.dart';
+import '../../core/constants/kerala_districts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
@@ -34,7 +34,7 @@ class ResponderDashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _ResponderDashboardScreenState extends ConsumerState<ResponderDashboardScreen> {
-  String _district = NationalMetros.all.first.name;
+  String _district = KeralaDistricts.defaultName;
   bool _loading = true;
   String? _error;
 
@@ -197,7 +197,7 @@ class _ResponderDashboardScreenState extends ConsumerState<ResponderDashboardScr
                         const SizedBox(height: 4),
                         DistrictDropdown(
                           value: _district,
-                          label: 'City',
+                          label: 'District',
                           onChanged: (v) {
                             setState(() => _district = v);
                             _load();
@@ -298,7 +298,7 @@ class _TacticalMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metro = NationalMetros.byName(district);
+    final dist = KeralaDistricts.byName(district);
     final ring = zone?.polygonRing ?? const <LatLng>[];
     final depthColor = AppColors.depthColor(zone?.avgWaterDepthMeters ?? 0);
 
@@ -309,7 +309,7 @@ class _TacticalMap extends StatelessWidget {
         child: Stack(
           children: [
             FlutterMap(
-              options: MapOptions(initialCenter: metro.center, initialZoom: 12.5, minZoom: 4, maxZoom: 17),
+              options: MapOptions(initialCenter: dist.center, initialZoom: 12.5, minZoom: 4, maxZoom: 17),
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',

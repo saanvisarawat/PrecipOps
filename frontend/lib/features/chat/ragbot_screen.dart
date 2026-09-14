@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../api/models/chat_models.dart';
@@ -9,7 +10,21 @@ import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../providers/api_provider.dart';
+import '../../providers/chat_language_provider.dart';
 import '../../widgets/status_badge.dart';
+
+/// Malayalam Unicode block (U+0D00–U+0D7F) — Inter (this app's body font)
+/// has no glyphs for it, so text containing it needs a script that does or
+/// it silently renders as tofu boxes. Applied per-message rather than
+/// globally so English messages keep the app's normal type.
+final _malayalamPattern = RegExp(r'[ഀ-ൿ]');
+
+TextStyle _localizedBody(String text, {Color? color}) {
+  final base = AppTypography.body(color: color ?? AppColors.textPrimary);
+  if (!_malayalamPattern.hasMatch(text)) return base;
+  final malayalam = GoogleFonts.notoSansMalayalam();
+  return base.copyWith(fontFamily: malayalam.fontFamily, fontFamilyFallback: [malayalam.fontFamily!, 'Inter']);
+}
 
 const _suggestedQuestions = [
   'What do I do if trapped by rising water?',
@@ -64,10 +79,11 @@ class _RagbotScreenState extends ConsumerState<RagbotScreen> {
     _scrollToBottom();
 
     final api = ref.read(preciopsApiProvider);
+    final language = ref.read(chatLanguageProvider);
     ChatResponse? response;
     String? errorText;
     try {
-      response = await api.sendChatMessage(ChatRequest(message: text, sessionId: _sessionId));
+      response = await api.sendChatMessage(ChatRequest(message: text, sessionId: _sessionId, language: language));
     } catch (_) {
       // /api/chat is a no-login citizen feature — a failure here is a
       // network/server issue, not an auth gate. Fail into a bot message
@@ -117,6 +133,7 @@ class _RagbotScreenState extends ConsumerState<RagbotScreen> {
   @override
   Widget build(BuildContext context) {
     final mode = _lastKnownMode;
+    final language = ref.watch(chatLanguageProvider);
     return Column(
       children: [
         Padding(
@@ -132,6 +149,11 @@ class _RagbotScreenState extends ConsumerState<RagbotScreen> {
                 color: mode == ChatMode.offline ? AppColors.warning : AppColors.accent,
                 icon: mode == ChatMode.offline ? Icons.wifi_off_rounded : Icons.cloud_done_outlined,
                 dot: true,
+              ),
+              const Spacer(),
+              _LanguageToggle(
+                value: language,
+                onChanged: (v) => ref.read(chatLanguageProvider.notifier).state = v,
               ),
             ],
           ),
@@ -242,7 +264,7 @@ class _ChatBubble extends StatelessWidget {
             color: AppColors.surfaceRaised,
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Text(message.text, style: AppTypography.body()),
+          child: Text(message.text, style: _localizedBody(message.text)),
         ),
       );
     }
@@ -271,8 +293,59 @@ class _ChatBubble extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Text(message.text, style: AppTypography.body()),
+            Text(message.text, style: _localizedBody(message.text)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Two-state EN/ML segmented pill — same visual language as
+/// [PredictorDashboardScreen]'s scenario toggle, scaled down for the chat
+/// header. Sending `language` on every request is Ragbot's job; this only
+/// owns the on-screen selector.
+class _LanguageToggle extends StatelessWidget {
+  final ChatLanguage value;
+  final ValueChanged<ChatLanguage> onChanged;
+  const _LanguageToggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _seg('EN', value == ChatLanguage.english, () => onChanged(ChatLanguage.english)),
+          _seg('ML', value == ChatLanguage.malayalam, () => onChanged(ChatLanguage.malayalam)),
+        ],
+      ),
+    );
+  }
+
+  Widget _seg(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: AppMotion.fast,
+        curve: AppMotion.curve,
+        width: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: AppTypography.caption(color: selected ? Colors.black : AppColors.textSecondary)
+              .copyWith(fontWeight: FontWeight.w700, fontSize: 11.5),
         ),
       ),
     );

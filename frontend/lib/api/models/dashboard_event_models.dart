@@ -32,6 +32,16 @@ sealed class DashboardEvent {
           assignedVolunteerName: json['assigned_volunteer_name'] as String?,
           timestamp: ts,
         ),
+      // Fired by the volunteer's own "Accept" action in the Volunteer Hub
+      // once a task has already been assigned (see volunteer_assigned
+      // above) — distinct because assignment and the volunteer actually
+      // setting off are two different moments the citizen cares about.
+      'volunteer_en_route' => VolunteerEnRouteEvent(
+          ticketId: json['ticket_id'].toString(),
+          volunteerId: json['volunteer_id']?.toString(),
+          volunteerName: json['volunteer_name'] as String?,
+          timestamp: ts,
+        ),
       'high_risk_alert' => HighRiskAlertEvent(
           district: json['district'] as String? ?? '',
           riskScore: (json['risk_score'] as num?)?.toInt() ?? 0,
@@ -84,6 +94,23 @@ class VolunteerAssignedEvent extends DashboardEvent {
     required this.ticketId,
     this.assignedVolunteerId,
     this.assignedVolunteerName,
+    required DateTime timestamp,
+  }) : super(timestamp);
+}
+
+/// A volunteer accepted an already-assigned task (Volunteer Hub's "Accept"
+/// action) — the moment the reporting citizen should be told "a volunteer
+/// is on the way" and shown the volunteer's live location, rather than
+/// only knowing someone was dispatched (see [VolunteerAssignedEvent]).
+class VolunteerEnRouteEvent extends DashboardEvent {
+  final String ticketId;
+  final String? volunteerId;
+  final String? volunteerName;
+
+  const VolunteerEnRouteEvent({
+    required this.ticketId,
+    this.volunteerId,
+    this.volunteerName,
     required DateTime timestamp,
   }) : super(timestamp);
 }

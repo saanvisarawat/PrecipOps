@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "481270922121",
+    "project_id": "flood-ops-b7dd9",
+    "storage_bucket": "flood-ops-b7dd9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:481270922121:android:31740d051fa5849d7bbf58",
+        "android_client_info": {
+          "package_name": "com.floodops.floodops_frontend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAltD8Vj_ynXvOsukfWbufyF1WB5IWIj88"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
