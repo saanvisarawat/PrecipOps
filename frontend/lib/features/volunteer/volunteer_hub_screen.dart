@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +33,50 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
   bool _updatingStatus = false;
   final Set<String> _accepting = {};
 
+  /// Keeps the citizen's live-tracking map honest: `POST
+  /// /api/volunteers/location` only used to fire once, when duty status
+  /// was toggled on, so a citizen watching an "en route" volunteer just
+  /// saw them frozen at wherever they'd been when they went on duty. This
+  /// re-sends a fresh GPS fix every 20s for as long as this volunteer is
+  /// on duty AND has at least one task actually en route — started/stopped
+  /// automatically as those two conditions change, never left running
+  /// pointlessly in the background otherwise.
+  Timer? _trackingTimer;
+
+  @override
+  void dispose() {
+    _trackingTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncTrackingTimer() {
+    final hasEnRouteTask = _tasks?.any((t) => t.status == TaskStatus.enRoute) ?? false;
+    final shouldTrack = _status == DutyStatus.available && hasEnRouteTask;
+    if (shouldTrack && _trackingTimer == null) {
+      _reportLocation();
+      _trackingTimer = Timer.periodic(const Duration(seconds: 20), (_) => _reportLocation());
+    } else if (!shouldTrack && _trackingTimer != null) {
+      _trackingTimer!.cancel();
+      _trackingTimer = null;
+    }
+  }
+
+  Future<void> _reportLocation() async {
+    try {
+      final pos = await ref.read(locationServiceProvider).getCurrentPosition();
+      final api = ref.read(preciopsApiProvider);
+      await api.updateVolunteerLocation(VolunteerLocationUpdate(
+        status: DutyStatus.available,
+        skills: _skills.toList(),
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      ));
+    } catch (_) {
+      // Best-effort — a missed GPS ping just tries again on the next tick
+      // rather than interrupting the volunteer with an error.
+    }
+  }
+
   Future<void> _loadTasks() async {
     final api = ref.read(preciopsApiProvider);
     List<VolunteerTask> tasks = const [];
@@ -45,6 +91,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
       }
     }
     if (mounted) setState(() => _tasks = tasks);
+    _syncTrackingTimer();
   }
 
   Future<void> _toggleStatus(bool onDuty) async {
@@ -76,6 +123,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
       _updatingStatus = false;
     });
     if (ok && onDuty && _tasks == null) _loadTasks();
+    _syncTrackingTimer();
   }
 
   Future<void> _accept(VolunteerTask task) async {
@@ -90,6 +138,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
           if (index != -1) _tasks![index] = updated;
         });
         AppToast.show(context, 'Accepted — the citizen has been notified you\'re on the way.', kind: AppToastKind.success);
+        _syncTrackingTimer();
       }
     } catch (_) {
       if (mounted) {
