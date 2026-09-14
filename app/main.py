@@ -205,7 +205,14 @@ async def run_kerala_flood_pipeline():
             "risk_probability": prob,
             "is_high_risk": is_high_risk,
             "alert_level": "CRITICAL" if risk_score >= 75 else "WARNING" if risk_score >= 39 else "NORMAL",
-            "top_factors": top_factors
+            "top_factors": top_factors,
+            # weather_data (this same fetch_open_meteo_data() call) already
+            # carries the 4-pillar telemetry — without this, this full
+            # dict replacement silently wiped out whatever pillars
+            # update_telemetry_cache() had patched in, leaving the
+            # Predictor Dashboard's 4-Pillar HUD showing telemetry_pillars: {}
+            # (all zeros) every time this hourly job ran.
+            "pillars": weather_data.get("pillars", {}),
         }
 
         if is_high_risk and not _previous_high_risk.get(district, False):
