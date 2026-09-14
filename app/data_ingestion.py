@@ -153,13 +153,38 @@ async def fetch_open_meteo_data():
     weather_url = "https://api.open-meteo.com/v1/forecast"
     flood_url = "https://flood-api.open-meteo.com/v1/flood"
     results = {}
-    
+
+    async def _get_with_retry(client: httpx.AsyncClient, url: str, params: dict, retries: int = 2, backoff_s: float = 8.0):
+        """
+        A live run showed the first ~10 of 14 districts succeed and only
+        the last few 429 — a rolling per-minute limit getting tripped
+        partway through the run, not an outright IP block. A short wait
+        and retry clears that far more often than immediately giving up
+        and falling back to placeholder (0.0) data for the rest of the run.
+        """
+        last_exc = None
+        for attempt in range(retries + 1):
+            try:
+                res = await client.get(url, params=params)
+                if res.status_code == 429:
+                    raise httpx.HTTPStatusError("429 Too Many Requests", request=res.request, response=res)
+                res.raise_for_status()
+                return res
+            except httpx.HTTPStatusError as e:
+                last_exc = e
+                if e.response is not None and e.response.status_code == 429 and attempt < retries:
+                    await asyncio.sleep(backoff_s)
+                    continue
+                raise
+        raise last_exc
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         for district, coords in KERALA_DISTRICTS.items():
             try:
-                weather_res = await client.get(
+                weather_res = await _get_with_retry(
+                    client,
                     weather_url,
-                    params={
+                    {
                         "latitude": coords["lat"],
                         "longitude": coords["lon"],
                         "current": "precipitation,temperature_2m,relative_humidity_2m,cloud_cover",
@@ -169,9 +194,10 @@ async def fetch_open_meteo_data():
                         "timezone": "auto"
                     }
                 )
-                flood_res = await client.get(
+                flood_res = await _get_with_retry(
+                    client,
                     flood_url,
-                    params={
+                    {
                         "latitude": coords["lat"],
                         "longitude": coords["lon"],
                         "daily": "river_discharge",
@@ -179,8 +205,6 @@ async def fetch_open_meteo_data():
                         "forecast_days": 1
                     }
                 )
-                weather_res.raise_for_status()
-                flood_res.raise_for_status()
 
                 w_data = weather_res.json()
                 f_data = flood_res.json()
@@ -229,7 +253,7 @@ async def fetch_open_meteo_data():
                     "river_discharge_15d_sum": 0.0,
                     "pillars": derive_four_pillars(0.0, 30.0, 28.0, 70.0, 0.0)
                 }
-            await asyncio.sleep(0.5)  # stagger requests to avoid bursting Open-Meteo — widened after live 429s
+            await asyncio.sleep(2.0)  # stagger requests to avoid bursting Open-Meteo — a rolling per-minute limit was still tripping partway through a 14-district run at 0.5s
 
     return results
 
