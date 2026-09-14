@@ -17,8 +17,10 @@ class UserCreate(BaseModel):
     full_name: str
     email: str
     password: str
-    # Strictly aligned with the PrecipOps PPT roles (excluding predictor for security)
-    role: Literal["citizen", "responder"] = "citizen"
+    # Must match models.UserRole exactly (citizen/volunteer/official) — the
+    # register screen lets a user pick any of the three, and the frontend
+    # sends that literal role string.
+    role: Literal["citizen", "volunteer", "official"] = "citizen"
 
 class UserLogin(BaseModel):
     email: str

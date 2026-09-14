@@ -219,6 +219,16 @@ async def run_kerala_flood_pipeline():
                     risk_score=risk_score,
                 ))
                 pending_db.commit()
+            except Exception as e:
+                # A DB hiccup here (connection blip, pool exhaustion) must
+                # not abort the whole pipeline run — without this, every
+                # district processed after this one in the loop would
+                # silently never get its real risk_score written this run,
+                # leaving them stuck on update_telemetry_cache()'s 0/NORMAL
+                # placeholder until the next hourly run (or forever, if the
+                # DB issue persists).
+                print(f"⚠️ Failed to record pending alert for {district}: {e}")
+                pending_db.rollback()
             finally:
                 pending_db.close()
         _previous_high_risk[district] = is_high_risk
@@ -762,10 +772,24 @@ async def chat_with_ragbot(req: schemas.ChatRequest):
         try:
             # Safely check for the language parameter (defaults to english)
             target_lang = getattr(req, 'language', 'english').lower()
+            is_malayalam = target_lang == "malayalam"
+            # A single soft instruction near the top of the prompt wasn't
+            # reliably followed — gemini-1.5-flash tends to default to the
+            # language of the question/context over a generic system
+            # instruction. Reinforced here (forceful + repeated right
+            # before the question, since models weight the end of the
+            # prompt more heavily) instead of stated once.
             lang_instruction = (
-                "Respond strictly in Malayalam." 
-                if target_lang == "malayalam" 
+                "CRITICAL: You must respond ENTIRELY in Malayalam (Malayalam script), "
+                "regardless of what language the question or the protocols below are in. "
+                "Do not use English except for untranslatable proper nouns."
+                if is_malayalam
                 else "Respond in English."
+            )
+            lang_reminder = (
+                "Remember: reply ONLY in Malayalam script, no matter the question's language.\n\n"
+                if is_malayalam
+                else ""
             )
 
             prompt = (
@@ -774,6 +798,7 @@ async def chat_with_ragbot(req: schemas.ChatRequest):
                 "Use ONLY the following official NDMA protocols to answer the user's question. "
                 "Keep answers highly concise and focused on immediate safety.\n\n"
                 f"Protocols:\n{context_text}\n\n"
+                f"{lang_reminder}"
                 f"User Question: {req.message}"
             )
             
