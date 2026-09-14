@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -92,14 +93,20 @@ class _ResponderDashboardScreenState extends ConsumerState<ResponderDashboardScr
   }
 
   /// Picks the simulated scenario from this district's real PS-71 risk
-  /// level instead of always requesting the worst case — falls back to
-  /// EXTREME_EVENT (the safer over-warn default) if the live risk feed
-  /// can't be reached.
+  /// level instead of always requesting the worst case. A 404 here means
+  /// "no live telemetry yet" (e.g. right after a redeploy, before the
+  /// hourly risk pipeline has completed its first run) — that's an
+  /// absence of data, not evidence of danger, so it resolves to NORMAL
+  /// rather than misrepresenting every not-yet-ready district as
+  /// critical. Any other failure (network down, 500, timeout) still
+  /// fails safe to EXTREME_EVENT.
   Future<String> _resolveScenario(PreciopsApi api) async {
     try {
       final d = KeralaDistricts.byName(_district);
       final risk = await api.predictKerala(lat: d.lat, lon: d.lon, district: d.name);
       return scenarioForRiskLevel(risk.riskLevel);
+    } on DioException catch (e) {
+      return e.response?.statusCode == 404 ? 'NORMAL' : 'EXTREME_EVENT';
     } catch (_) {
       return 'EXTREME_EVENT';
     }
