@@ -85,22 +85,19 @@ class _SosDashboardBodyState extends ConsumerState<_SosDashboardBody> {
     });
   }
 
-  /// Nearest-online-first: available volunteers with a known location sort
-  /// by distance to the incident; available volunteers with no location
-  /// come next; everyone else (busy/offline) sorts last. This is what
-  /// "assign the nearest online volunteer" means for the manual-dispatch
-  /// fallback — automatic allocation already does this server-side at
-  /// report-creation time (see `dio_floodops_api.dart`'s NOTE on
-  /// `createReport`).
-  List<AdminVolunteer> _sortedByProximity(AdminReport report) {
+  /// Officials can only dispatch volunteers who are actually online
+  /// (`status == "available"`) — busy/offline volunteers are excluded
+  /// entirely, not just deprioritized, since assigning someone who isn't
+  /// actually on duty would just leave the citizen waiting on nobody.
+  /// Among the online ones, nearest to the incident sorts first.
+  List<AdminVolunteer> _onlineSortedByProximity(AdminReport report) {
     final origin = LatLng(report.latitude, report.longitude);
     const distance = Distance();
     double? distanceKm(AdminVolunteer v) => (v.latitude != null && v.longitude != null)
         ? distance.as(LengthUnit.Kilometer, origin, LatLng(v.latitude!, v.longitude!))
         : null;
-    final sorted = [..._volunteers];
-    sorted.sort((a, b) {
-      if (a.isAvailable != b.isAvailable) return a.isAvailable ? -1 : 1;
+    final online = _volunteers.where((v) => v.isAvailable).toList();
+    online.sort((a, b) {
       final da = distanceKm(a);
       final db = distanceKm(b);
       if (da == null && db == null) return 0;
@@ -108,14 +105,14 @@ class _SosDashboardBodyState extends ConsumerState<_SosDashboardBody> {
       if (db == null) return -1;
       return da.compareTo(db);
     });
-    return sorted;
+    return online;
   }
 
   Future<void> _pickVolunteerAndAssign(AdminReport report) async {
     final volunteer = await AppBottomSheet.show<AdminVolunteer>(
       context,
       builder: (context) => _VolunteerPickerSheet(
-        volunteers: _sortedByProximity(report),
+        volunteers: _onlineSortedByProximity(report),
         origin: LatLng(report.latitude, report.longitude),
       ),
     );
@@ -262,14 +259,17 @@ class _VolunteerPickerSheet extends StatelessWidget {
         Text('Dispatch to', style: AppTypography.sectionTitle()),
         const SizedBox(height: 2),
         Text(
-          'Sorted by nearest available volunteer first',
+          'Online volunteers only, nearest first',
           style: AppTypography.caption(color: AppColors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.sm),
         if (volunteers.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-            child: Text('No volunteers registered yet.', style: AppTypography.body(color: AppColors.textSecondary)),
+            child: Text(
+              'No volunteers are online right now.',
+              style: AppTypography.body(color: AppColors.textSecondary),
+            ),
           )
         else
           ConstrainedBox(

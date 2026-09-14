@@ -25,4 +25,14 @@ class NavDestination {
         point: LatLng(shelter.latitude, shelter.longitude),
         shelterId: shelter.id,
       );
+
+  /// A snapshot of an en-route volunteer's last polled position — like
+  /// [fromShelter], this is a one-time route target, not a live-updating
+  /// one, so directions reflect where the volunteer *was* when the citizen
+  /// tapped "Get Directions," not a continuously re-routed live escort.
+  factory NavDestination.toVolunteer(String volunteerName, LatLng point) => NavDestination(
+        label: volunteerName,
+        subtitle: 'Volunteer — en route to you',
+        point: point,
+      );
 }

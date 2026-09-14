@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../api/floodops_api.dart';
@@ -26,6 +27,7 @@ import '../../widgets/section_header.dart';
 import '../../widgets/sos_button.dart';
 import '../../widgets/status_badge.dart';
 import '../dashboard/widgets/sos_flow.dart';
+import '../navigation/models/nav_destination.dart';
 import '../navigation/models/route_option.dart';
 import '../navigation/models/travel_mode.dart';
 import '../navigation/providers/navigation_providers.dart';
@@ -506,6 +508,17 @@ class _VolunteerEnRouteCard extends StatelessWidget {
                 ),
               ),
             ),
+          if (volunteerLocation != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            AppButton.secondary(
+              label: 'Get Directions to Volunteer',
+              icon: Icons.alt_route_rounded,
+              onPressed: () => context.push(
+                '/navigate',
+                extra: NavDestination.toVolunteer(volunteerName, volunteerLocation!),
+              ),
+            ),
+          ],
         ],
       ),
     );
