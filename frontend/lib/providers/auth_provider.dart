@@ -130,7 +130,12 @@ class AuthController extends Notifier<AuthState> {
     final storage = ref.read(secureStorageServiceProvider);
     await storage.clearSession();
     _syncApiToken(null);
-    state = const AuthState();
+    // AuthState()'s default isRestoring:true is meant for the app's very
+    // first boot, cleared once by _restoreSession() — that never runs
+    // again after logout, so leaving it at the default left RootGate
+    // stuck showing its loading spinner forever instead of the login
+    // screen.
+    state = const AuthState(isRestoring: false);
   }
 }
 
