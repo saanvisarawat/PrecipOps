@@ -251,18 +251,21 @@ async def lifespan(app: FastAPI):
     # Keep your existing background jobs
     scheduler.add_job(fetch_satellite_sar_data, 'interval', minutes=1)
     scheduler.add_job(run_kerala_flood_pipeline, 'interval', hours=1)
-    
-    # 1. Schedule the NEW telemetry job to run every 15 minutes
-    scheduler.add_job(update_telemetry_cache, 'interval', minutes=15)
-    
+
+    # update_telemetry_cache() (a second, independent every-15-min fetch of
+    # the same 14 districts) was removed — it ran concurrently with
+    # run_kerala_flood_pipeline() on every boot, doubling the simultaneous
+    # request volume to Open-Meteo and reliably triggering
+    # "429 Too Many Requests" for every single district on both jobs. Since
+    # run_kerala_flood_pipeline() already writes rainfall/discharge/pillars
+    # alongside risk_score in the same pass, that second job was fully
+    # redundant, not just risky.
+
     scheduler.start()
-    
+
     # Keep your existing immediate task
     asyncio.create_task(run_kerala_flood_pipeline())
-    
-    # 2. Run the NEW telemetry task immediately on boot
-    asyncio.create_task(update_telemetry_cache())
-    
+
     yield
     scheduler.shutdown()
 
@@ -284,38 +287,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-async def update_telemetry_cache():
-    print("🔄 Fetching live 4-pillar telemetry for Kerala...")
-    try:
-        live_data = await fetch_open_meteo_data()
-        
-        for district, data in live_data.items():
-            if district in kerala_live_cache["districts"]:
-                # Only update the raw weather/telemetry feeds. 
-                # Do NOT touch risk_score, alert_level, or top_factors.
-                current = kerala_live_cache["districts"][district]
-                current["rainfall_mm"] = data.get("rainfall_mm", current.get("rainfall_mm"))
-                current["river_discharge_m3s"] = data.get("river_discharge_m3s", current.get("river_discharge_m3s"))
-                current["pillars"] = data.get("pillars", current.get("pillars"))
-            else:
-                # If ML pipeline hasn't run yet, initialize safely as NORMAL
-                kerala_live_cache["districts"][district] = {
-                    **data,
-                    "risk_score": 0,
-                    "risk_probability": 0.0,
-                    "alert_level": "NORMAL",
-                    "is_high_risk": False,
-                    "top_factors": ["elevation_m"]
-                }
-            
-        kerala_live_cache["last_updated"] = "Live"
-        print("✅ Cache successfully updated with live meteorological data.")
-        
-    except Exception as e:
-        print(f"⚠️ Pipeline Error: {e}")
-
 
 
 from .agents import router as agents_router

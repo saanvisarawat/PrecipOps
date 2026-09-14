@@ -229,7 +229,7 @@ async def fetch_open_meteo_data():
                     "river_discharge_15d_sum": 0.0,
                     "pillars": derive_four_pillars(0.0, 30.0, 28.0, 70.0, 0.0)
                 }
-            await asyncio.sleep(0.15)  # stagger requests to avoid bursting Open-Meteo
+            await asyncio.sleep(0.5)  # stagger requests to avoid bursting Open-Meteo — widened after live 429s
 
     return results
 
