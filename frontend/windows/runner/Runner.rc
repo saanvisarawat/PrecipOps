@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.floodops" "\0"
-            VALUE "FileDescription", "floodops_frontend" "\0"
+            VALUE "FileDescription", "Preciops" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "floodops_frontend" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.floodops. All rights reserved." "\0"
             VALUE "OriginalFilename", "floodops_frontend.exe" "\0"
-            VALUE "ProductName", "floodops_frontend" "\0"
+            VALUE "ProductName", "Preciops" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

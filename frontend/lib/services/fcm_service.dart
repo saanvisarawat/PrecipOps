@@ -94,7 +94,7 @@ class FcmService {
         fullScreenIntent: true,
       );
       const details = NotificationDetails(android: androidDetails, iOS: DarwinNotificationDetails());
-      final alias = message.data['caller_name'] as String? ?? 'FloodOps Emergency';
+      final alias = message.data['caller_name'] as String? ?? 'Preciops Emergency';
       await _localNotifications.show(
         Random().nextInt(1 << 31),
         'Incoming Emergency Rescue Dispatch',

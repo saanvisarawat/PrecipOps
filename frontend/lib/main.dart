@@ -23,18 +23,18 @@ Future<void> main() async {
 
   runApp(ProviderScope(
     overrides: [firebaseReadyProvider.overrideWithValue(firebaseReady)],
-    child: const FloodOpsApp(),
+    child: const PreciopsApp(),
   ));
 }
 
-class FloodOpsApp extends ConsumerStatefulWidget {
-  const FloodOpsApp({super.key});
+class PreciopsApp extends ConsumerStatefulWidget {
+  const PreciopsApp({super.key});
 
   @override
-  ConsumerState<FloodOpsApp> createState() => _FloodOpsAppState();
+  ConsumerState<PreciopsApp> createState() => _PreciopsAppState();
 }
 
-class _FloodOpsAppState extends ConsumerState<FloodOpsApp> {
+class _PreciopsAppState extends ConsumerState<PreciopsApp> {
   @override
   void initState() {
     super.initState();
@@ -62,7 +62,7 @@ class _FloodOpsAppState extends ConsumerState<FloodOpsApp> {
         token = 'mock-fcm-token-unavailable-on-this-platform';
       }
     }
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     try {
       await api.registerFcmToken(token);
     } catch (_) {
@@ -79,7 +79,7 @@ class _FloodOpsAppState extends ConsumerState<FloodOpsApp> {
     // exact same stream the debug trigger (simulateIncomingCall) does.
     if (firebaseReady) {
       ref.read(fcmServiceProvider).listenForMaskedCalls((payload) {
-        ref.read(floodOpsApiProvider).deliverIncomingCall(payload);
+        ref.read(preciopsApiProvider).deliverIncomingCall(payload);
       });
     }
   }
@@ -96,7 +96,7 @@ class _FloodOpsAppState extends ConsumerState<FloodOpsApp> {
     });
 
     return MaterialApp.router(
-      title: 'FloodOps Kerala',
+      title: 'Preciops',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       darkTheme: AppTheme.dark,

@@ -2,27 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../api/models/auth_models.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/shell_nav_provider.dart';
+import '../../widgets/app_bottom_sheet.dart';
 import '../../widgets/app_card.dart';
+import '../dashboard/widgets/sos_composer_sheet.dart';
 
 /// Feature hub — every major module as a tappable icon tile, so the user
 /// can jump straight to any module instead of digging through nav. A
 /// destination in its own right in the bottom nav, separate from Home
-/// (which stays the SOS-first live dashboard).
+/// (which is now the Citizen Dashboard's inundation view).
+///
+/// Volunteer/Official-only tiles (Command Center, Volunteer Hub) were
+/// removed: those legacy roles now normalize to RESPONDER/PREDICTOR and
+/// land on their own dashboards straight from login — they never see this
+/// screen, so a tile gated on `isVolunteer`/`isOfficial` here could never
+/// actually be tapped.
 class HubScreen extends ConsumerWidget {
   const HubScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(authProvider);
-    final isVolunteer = auth.user?.role == UserRole.volunteer;
-    final isOfficial = auth.user?.role == UserRole.official;
-
     void goToTab(int index) => ref.read(shellTabIndexProvider.notifier).state = index;
 
     final tiles = <_HubTileData>[
@@ -30,13 +32,7 @@ class HubScreen extends ConsumerWidget {
         icon: Icons.emergency_share_rounded,
         label: 'SOS / Emergency Report',
         subtitle: 'Send an emergency alert',
-        onTap: () => goToTab(0),
-      ),
-      _HubTileData(
-        icon: Icons.speed_outlined,
-        label: 'Risk Predictor',
-        subtitle: 'Check flood risk now',
-        onTap: () => goToTab(3),
+        onTap: () => AppBottomSheet.show(context, builder: (_) => const SosComposerSheet()),
       ),
       _HubTileData(
         icon: Icons.map_outlined,
@@ -54,31 +50,19 @@ class HubScreen extends ConsumerWidget {
         icon: Icons.fact_check_outlined,
         label: 'Verified Reports Feed',
         subtitle: 'Crowd-verified reports',
-        onTap: () => goToTab(5),
+        onTap: () => goToTab(4),
       ),
       _HubTileData(
         icon: Icons.chat_bubble_outline,
         label: 'Survival Chatbot',
         subtitle: 'Ask Ragbot for help',
-        onTap: () => goToTab(4),
+        onTap: () => goToTab(3),
       ),
       _HubTileData(
         icon: Icons.mic_none_rounded,
         label: 'Voice Agent',
         subtitle: 'Speak your emergency',
         onTap: () => context.push('/voice-agent'),
-      ),
-      _HubTileData(
-        icon: Icons.water_outlined,
-        label: 'Dams & Reservoirs',
-        subtitle: 'Live water levels',
-        onTap: () => context.push('/reservoirs'),
-      ),
-      _HubTileData(
-        icon: Icons.volunteer_activism_outlined,
-        label: 'Volunteer Hub',
-        subtitle: isVolunteer ? 'Duty, tasks & masked calls' : 'Volunteer sign-in required',
-        onTap: isVolunteer ? () => context.push('/volunteer-hub') : null,
       ),
       _HubTileData(
         icon: Icons.home_work_outlined,
@@ -92,13 +76,6 @@ class HubScreen extends ConsumerWidget {
         subtitle: 'Verified & dispatched alerts',
         onTap: () => context.push('/alerts'),
       ),
-      if (isOfficial)
-        _HubTileData(
-          icon: Icons.satellite_alt_outlined,
-          label: 'Command Center',
-          subtitle: 'Live SOS stream',
-          onTap: () => context.push('/live-dashboard'),
-        ),
     ];
 
     return Center(

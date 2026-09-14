@@ -1,14 +1,19 @@
 /// The single seam for pointing this app at a real backend.
 ///
-/// Defaults to the real backend now (the FastAPI instance at
-/// github.com/saanvisarawat/FloodOps_DecodeSIH, run locally via
-/// `uvicorn app.main:app --host 0.0.0.0 --port 8000`), so any launch
-/// config — or a plain `flutter run` with no --dart-define flags at
-/// all — connects to it. Pass `--dart-define=USE_MOCK_API=true` to opt
-/// back into the mock for offline demoing.
+/// Defaults to the deployed Render backend — this same web build is served
+/// live to real users via Vercel with no build-time `--dart-define`, so the
+/// default here has to be a backend everyone can actually reach, not a
+/// developer's own localhost. Override for local development instead:
+///   - Flutter Web/Desktop      -> `--dart-define=API_BASE_URL=http://127.0.0.1:8000`
+///   - Android Emulator         -> `--dart-define=API_BASE_URL=http://10.0.2.2:8000`
+///     (10.0.2.2 is the emulator's alias for the host machine's localhost)
+///   - Physical device on Wi-Fi -> `--dart-define=API_BASE_URL=http://<PC_IP>:8000`
+///     pointed at whatever machine is running uvicorn
 ///
-/// No screen imports this file directly except `providers/api_provider.dart`,
-/// which is the only place the mock/real choice is made.
+/// Pass `--dart-define=USE_MOCK_API=true` to opt into the mock for
+/// offline demoing instead. No screen imports this file directly except
+/// `providers/api_provider.dart`, which is the only place the mock/real
+/// choice is made.
 class Env {
   Env._();
 
@@ -17,18 +22,12 @@ class Env {
     defaultValue: false,
   );
 
-  /// Defaults to the deployed Render backend, reachable from anywhere
-  /// (physical devices, emulators, web/desktop builds) with no LAN/IP
-  /// config needed. Override with --dart-define=API_BASE_URL=... to
-  /// point at a local dev server instead (e.g. http://10.0.2.2:8000 for
-  /// the Android emulator talking to a machine on the same network).
-  static const String apiBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://floodops-decodesih-3mrj.onrender.com',
-  );
+  static const String _apiBaseUrlOverride = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  static const String _wsBaseUrlOverride = String.fromEnvironment('WS_BASE_URL', defaultValue: '');
 
-  static const String wsBaseUrl = String.fromEnvironment(
-    'WS_BASE_URL',
-    defaultValue: 'wss://floodops-decodesih-3mrj.onrender.com',
-  );
+  static String get apiBaseUrl =>
+      _apiBaseUrlOverride.isNotEmpty ? _apiBaseUrlOverride : 'https://floodops-decodesih-3mrj.onrender.com';
+
+  static String get wsBaseUrl =>
+      _wsBaseUrlOverride.isNotEmpty ? _wsBaseUrlOverride : 'wss://floodops-decodesih-3mrj.onrender.com';
 }

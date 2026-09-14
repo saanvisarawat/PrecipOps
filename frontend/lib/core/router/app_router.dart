@@ -7,15 +7,13 @@ import '../../features/alerts/pending_alerts_screen.dart';
 import '../../features/official/official_sos_dashboard_screen.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/auth/register_screen.dart';
-import '../../features/dashboard/shell_screen.dart';
+import '../../features/auth/root_gate.dart';
 import '../../features/navigation/models/nav_destination.dart';
 import '../../features/navigation/screens/navigation_map_screen.dart';
 import '../../features/navigation/screens/offline_maps_screen.dart';
-import '../../features/official_dashboard/live_dashboard_screen.dart';
+import '../../features/predictor/predictor_dashboard_screen.dart';
 import '../../features/profile/profile_screen.dart';
-import '../../features/reservoirs/reservoir_screen.dart';
-import '../../features/risk/district_risk_snapshot_screen.dart';
-import '../../features/risk/manual_risk_predictor_screen.dart';
+import '../../features/responder/responder_dashboard_screen.dart';
 import '../../features/shelters/shelters_near_me_screen.dart';
 import '../../features/sos/offline_queue_screen.dart';
 import '../../features/voice/voice_agent_screen.dart';
@@ -29,22 +27,20 @@ final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: '/',
   routes: [
-    GoRoute(path: '/', builder: (context, state) => const ShellScreen()),
+    GoRoute(path: '/', builder: (context, state) => const RootGate()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
     GoRoute(path: '/profile', builder: (context, state) => const ProfileScreen()),
+    GoRoute(path: '/predictor', builder: (context, state) => const PredictorDashboardScreen()),
+    GoRoute(path: '/responder', builder: (context, state) => const ResponderDashboardScreen()),
     GoRoute(path: '/offline-queue', builder: (context, state) => const OfflineQueueScreen()),
     GoRoute(path: '/volunteer-hub', builder: (context, state) => const VolunteerHubScreen()),
     GoRoute(path: '/agent-hub', builder: (context, state) => const AgentHubScreen()),
-    GoRoute(path: '/live-dashboard', builder: (context, state) => const LiveDashboardScreen()),
     GoRoute(
       path: '/navigate',
       builder: (context, state) => NavigationMapScreen(initialDestination: state.extra as NavDestination?),
     ),
     GoRoute(path: '/offline-maps', builder: (context, state) => const OfflineMapsScreen()),
-    GoRoute(path: '/reservoirs', builder: (context, state) => const ReservoirScreen()),
-    GoRoute(path: '/manual-risk-predictor', builder: (context, state) => const ManualRiskPredictorScreen()),
-    GoRoute(path: '/district-risk-snapshot', builder: (context, state) => const DistrictRiskSnapshotScreen()),
     GoRoute(path: '/voice-agent', builder: (context, state) => const VoiceAgentScreen()),
     GoRoute(path: '/alerts', builder: (context, state) => const AlertsScreen()),
     GoRoute(path: '/pending-alerts', builder: (context, state) => const PendingAlertsScreen()),

@@ -79,17 +79,22 @@ class AppColors {
         BoxShadow(color: color, blurRadius: blur, spreadRadius: spread),
       ];
 
-  // Risk-level scale (low -> high). Green is never forced onto a high
-  // reading just because it's the brand color.
-  static Color riskColor(double score) {
-    if (score < 35) return accent;
-    if (score < 65) return warning;
-    return dangerStrong;
+  /// PS 26071 inundation-polygon fill by water depth: 0.3-0.7m (traffic
+  /// halt, minor waterlogging) reads [warning]; >=1.2m (submerged vehicles,
+  /// evacuation required) reads [dangerStrong]. Mapped onto the existing
+  /// accent/warning/danger palette rather than a new ad-hoc scale.
+  static Color depthColor(double meters) {
+    if (meters >= 1.2) return dangerStrong;
+    if (meters >= 0.3) return warning;
+    return accent;
   }
 
-  static String riskLabel(double score) {
-    if (score < 35) return 'Low';
-    if (score < 65) return 'Moderate';
-    return 'High';
-  }
+  /// IMD alert-level color (RED/ORANGE/YELLOW/GREEN) used across the
+  /// Predictor/Responder advisory panels.
+  static Color alertLevelColor(String level) => switch (level.toUpperCase()) {
+        'RED' => dangerStrong,
+        'ORANGE' => warning,
+        'YELLOW' => warning,
+        _ => accent,
+      };
 }

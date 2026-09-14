@@ -31,7 +31,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
   bool _updatingStatus = false;
 
   Future<void> _loadTasks() async {
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     List<VolunteerTask> tasks = const [];
     try {
       tasks = await api.getVolunteerTasks();
@@ -48,7 +48,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
 
   Future<void> _toggleStatus(bool onDuty) async {
     setState(() => _updatingStatus = true);
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     double lat = 9.9816, lng = 76.2999; // Ernakulam fallback if GPS unavailable
     try {
       final pos = await ref.read(locationServiceProvider).getCurrentPosition();
@@ -159,7 +159,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
             ),
             const SizedBox(height: AppSpacing.section),
             AppCard(
-              onTap: () => context.push('/district-risk-snapshot'),
+              onTap: () => context.push('/responder'),
               child: Row(
                 children: [
                   const Icon(Icons.analytics_outlined, color: AppColors.accent, size: 22),
@@ -168,9 +168,9 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('District Risk Levels', style: AppTypography.cardTitle()),
+                        Text('Inundation & Storm Outlook', style: AppTypography.cardTitle()),
                         const SizedBox(height: 2),
-                        Text('Live conditions & risk score by district',
+                        Text('City-wide flood risk, radar & IMD advisory',
                             style: AppTypography.caption(color: AppColors.textSecondary)),
                       ],
                     ),
@@ -275,7 +275,7 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
                     label: 'Simulate Incoming Emergency Call',
                     icon: Icons.call,
                     color: AppColors.danger,
-                    onPressed: () => ref.read(floodOpsApiProvider).simulateIncomingCall(),
+                    onPressed: () => ref.read(preciopsApiProvider).simulateIncomingCall(),
                   ),
                 ],
               ),

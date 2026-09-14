@@ -44,7 +44,7 @@ class _DestinationSearchSheetState extends ConsumerState<DestinationSearchSheet>
   }
 
   Future<void> _load() async {
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     try {
       final result = await api.getSheltersGeoJson();
       ref.read(sheltersCacheProvider.notifier).state = result.features;

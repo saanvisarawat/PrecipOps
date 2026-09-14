@@ -17,7 +17,7 @@ import '../profile/role_gate.dart';
 
 /// HITL gate for the citizen-facing high_risk_alert push: a model-detected
 /// high-risk transition creates a pending row here instead of pushing
-/// straight to citizens (see run_kerala_flood_pipeline in main.py). Only
+/// straight to citizens (see the hourly flood-risk pipeline job in main.py). Only
 /// once a volunteer or official approves it does the actual push fire
 /// (POST /api/alerts/{id}/approve), matching this app's "no alert reaches
 /// citizens without a human sign-off" requirement.
@@ -59,7 +59,7 @@ class _PendingAlertsBodyState extends ConsumerState<_PendingAlertsBody> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     List<PendingAlert> alerts = const [];
     try {
       alerts = await api.getPendingAlerts();
@@ -78,7 +78,7 @@ class _PendingAlertsBodyState extends ConsumerState<_PendingAlertsBody> {
 
   Future<void> _decide(PendingAlert alert, bool approve) async {
     setState(() => _resolving.add(alert.id));
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     try {
       if (approve) {
         await api.approveAlert(alert.id);

@@ -1,5 +1,5 @@
 /// Mirrors GET /api/alerts/pending on the real backend — a model-detected
-/// high-risk transition (see run_kerala_flood_pipeline in main.py) that's
+/// high-risk transition (see the hourly flood-risk pipeline job in main.py) that's
 /// waiting for a volunteer/official to approve or reject it. The actual
 /// citizen-facing high_risk_alert push only fires on approval — see
 /// POST /api/alerts/{id}/approve.

@@ -6,14 +6,14 @@ import '../api/mock/mock_floodops_api.dart';
 import '../core/config/env.dart';
 
 /// The ONLY place the mock/real backend choice is made. Every screen and
-/// controller reads [FloodOpsApi] through this provider — never
-/// instantiates `MockFloodOpsApi` directly. Going live is a one-flag
+/// controller reads [PreciopsApi] through this provider — never
+/// instantiates `MockPreciopsApi` directly. Going live is a one-flag
 /// change: flip `Env.useMockApi` to false (or pass
 /// `--dart-define=USE_MOCK_API=false --dart-define=API_BASE_URL=...`).
-final floodOpsApiProvider = Provider<FloodOpsApi>((ref) {
-  final FloodOpsApi api = Env.useMockApi
-      ? MockFloodOpsApi()
-      : DioFloodOpsApi(baseUrl: Env.apiBaseUrl, wsBaseUrl: Env.wsBaseUrl);
+final preciopsApiProvider = Provider<PreciopsApi>((ref) {
+  final PreciopsApi api = Env.useMockApi
+      ? MockPreciopsApi()
+      : DioPreciopsApi(baseUrl: Env.apiBaseUrl, wsBaseUrl: Env.wsBaseUrl);
   ref.onDispose(api.dispose);
   return api;
 });

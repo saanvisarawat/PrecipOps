@@ -63,7 +63,7 @@ class _SosDashboardBodyState extends ConsumerState<_SosDashboardBody> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     List<AdminReport> reports = const [];
     List<AdminVolunteer> volunteers = const [];
     try {
@@ -92,7 +92,7 @@ class _SosDashboardBodyState extends ConsumerState<_SosDashboardBody> {
     if (volunteer == null || !mounted) return;
 
     setState(() => _assigning.add(report.id));
-    final api = ref.read(floodOpsApiProvider);
+    final api = ref.read(preciopsApiProvider);
     try {
       final updated = await api.assignReportToVolunteer(report.id, volunteer.id);
       if (mounted) {

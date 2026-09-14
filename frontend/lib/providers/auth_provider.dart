@@ -13,8 +13,12 @@ class AuthState {
   final String? token;
   final bool isLoading;
   final String? error;
+  /// True until the initial `_restoreSession()` check (secure-storage read)
+  /// completes — lets `RootGate` show a spinner instead of flashing the
+  /// login screen while a previously-saved session might still be loading.
+  final bool isRestoring;
 
-  const AuthState({this.user, this.token, this.isLoading = false, this.error});
+  const AuthState({this.user, this.token, this.isLoading = false, this.error, this.isRestoring = true});
 
   bool get isLoggedIn => user != null && token != null;
 
@@ -24,12 +28,14 @@ class AuthState {
     bool? isLoading,
     String? error,
     bool clearError = false,
+    bool? isRestoring,
   }) =>
       AuthState(
         user: user ?? this.user,
         token: token ?? this.token,
         isLoading: isLoading ?? this.isLoading,
         error: clearError ? null : (error ?? this.error),
+        isRestoring: isRestoring ?? this.isRestoring,
       );
 }
 
@@ -40,19 +46,22 @@ class AuthController extends Notifier<AuthState> {
     return const AuthState();
   }
 
-  /// `DioFloodOpsApi` doesn't accept a fixed token at construction (the
+  /// `DioPreciopsApi` doesn't accept a fixed token at construction (the
   /// provider that builds it runs before login ever happens) — it reads
   /// `_authToken` fresh on every request via an interceptor. This keeps
   /// that field in sync whenever the session token changes.
   void _syncApiToken(String? token) {
-    final api = ref.read(floodOpsApiProvider);
-    if (api is DioFloodOpsApi) api.setAuthToken(token);
+    final api = ref.read(preciopsApiProvider);
+    if (api is DioPreciopsApi) api.setAuthToken(token);
   }
 
   Future<void> _restoreSession() async {
     final storage = ref.read(secureStorageServiceProvider);
     final session = await storage.readSession();
-    if (session == null) return;
+    if (session == null) {
+      state = state.copyWith(isRestoring: false);
+      return;
+    }
     _syncApiToken(session['token']);
     state = state.copyWith(
       token: session['token'],
@@ -62,13 +71,14 @@ class AuthController extends Notifier<AuthState> {
         email: session['email']!,
         role: UserRoleX.fromWire(session['role']!),
       ),
+      isRestoring: false,
     );
   }
 
   Future<bool> login(String email, String password) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final api = ref.read(floodOpsApiProvider);
+      final api = ref.read(preciopsApiProvider);
       final res = await api.login(LoginRequest(email: email, password: password));
       _syncApiToken(res.token);
       await _persist(res);
@@ -88,7 +98,7 @@ class AuthController extends Notifier<AuthState> {
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
-      final api = ref.read(floodOpsApiProvider);
+      final api = ref.read(preciopsApiProvider);
       final res = await api.register(RegisterRequest(
         fullName: fullName,
         email: email,

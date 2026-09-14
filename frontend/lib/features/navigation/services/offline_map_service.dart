@@ -42,7 +42,7 @@ class OfflineMapService {
   static const _tileUrlTemplate = 'https://tile.openstreetmap.org';
   // OSM's tile usage policy requires a descriptive User-Agent identifying
   // the app — anonymous/browser-spoofed UAs risk being rate-limited.
-  static const _userAgent = 'FloodOpsKerala/1.0 (offline-map-download)';
+  static const _userAgent = 'Preciops/1.0 (offline-map-download)';
 
   Database? _db;
   Directory? _tileDir;

@@ -136,7 +136,7 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> with Single
 
     VoiceAgentResult result;
     try {
-      result = await ref.read(floodOpsApiProvider).sendVoiceQuery(lat: lat, lng: lng, audioBytes: wavBytes);
+      result = await ref.read(preciopsApiProvider).sendVoiceQuery(lat: lat, lng: lng, audioBytes: wavBytes);
     } catch (e) {
       result = const VoiceAgentResult(errorMessage: 'Could not reach the Voice Agent. Please try again.');
     }
@@ -283,14 +283,14 @@ class _VoiceAgentScreenState extends ConsumerState<VoiceAgentScreen> with Single
                     if (_replyText != null) ...[
                       const SizedBox(height: AppSpacing.sm),
                       _TextPanel(
-                        label: 'FloodOps AI',
+                        label: 'Preciops AI',
                         icon: Icons.shield_moon_outlined,
                         text: _replyText!,
                       ),
                     ] else if (_hasAudio) ...[
                       const SizedBox(height: AppSpacing.sm),
                       const _TextPanel(
-                        label: 'FloodOps AI',
+                        label: 'Preciops AI',
                         icon: Icons.shield_moon_outlined,
                         text: 'Response received — playing spoken reply. '
                             '(The backend returns audio only; a text transcript isn\'t available yet.)',
