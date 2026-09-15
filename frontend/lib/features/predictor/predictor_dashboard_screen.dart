@@ -573,12 +573,16 @@ class _InundationMap extends StatelessWidget {
             ),
             Positioned(
               left: 12,
+              right: 12,
               top: 12,
-              child: StatusBadge(
-                label: '${frame?.severity ?? 'LOW'} · ${(frame?.waterDepthMeters ?? 0).toStringAsFixed(2)}m',
-                color: depthColor,
-                icon: Icons.water_rounded,
-                filled: true,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: StatusBadge(
+                  label: '${frame?.severity ?? 'LOW'} · ${(frame?.waterDepthMeters ?? 0).toStringAsFixed(2)}m',
+                  color: depthColor,
+                  icon: Icons.water_rounded,
+                  filled: true,
+                ),
               ),
             ),
           ],

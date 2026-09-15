@@ -64,7 +64,12 @@ class RainfallStatusCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Rainfall — $district', style: AppTypography.cardTitle()),
+                Text(
+                  'Rainfall — $district',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.cardTitle(),
+                ),
                 const SizedBox(height: 2),
                 Text('${rate.toStringAsFixed(1)} mm/hr', style: AppTypography.body(color: AppColors.textSecondary)),
               ],

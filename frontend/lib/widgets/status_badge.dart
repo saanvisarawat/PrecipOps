@@ -31,13 +31,17 @@ class StatusBadge extends StatelessWidget {
         children: [
           Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 7),
-          Text(
-            label,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              color: AppColors.textSecondary,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                color: AppColors.textSecondary,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -58,13 +62,17 @@ class StatusBadge extends StatelessWidget {
         children: [
           Icon(icon, size: 13, color: filled ? onFill : color),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Inter',
-              color: filled ? onFill : color,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                color: filled ? onFill : color,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
