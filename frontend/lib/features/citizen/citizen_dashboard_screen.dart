@@ -74,6 +74,11 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
   LatLng? _volunteerLocation;
   Timer? _volunteerPollTimer;
 
+  // An official's "Broadcast Emergency SMS" for this citizen's currently
+  // viewed district (AdvisoryBroadcastEvent) — shown as a dismissible
+  // banner until the citizen clears it or switches to a different district.
+  String? _activeAdvisoryMessage;
+
   @override
   void initState() {
     super.initState();
@@ -281,6 +286,10 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
           setState(() => _enRouteVolunteerName = name);
           AppToast.show(context, '$name is on the way!', kind: AppToastKind.success);
           _startVolunteerLocationPolling();
+        } else if (event is AdvisoryBroadcastEvent &&
+            event.district.toLowerCase() == _district.toLowerCase()) {
+          setState(() => _activeAdvisoryMessage = event.alertMessage);
+          AppToast.show(context, 'New IMD advisory for $_district.', kind: AppToastKind.error);
         }
       });
     });
@@ -312,6 +321,13 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
                         ],
                       ),
                     ),
+                    if (_activeAdvisoryMessage != null) ...[
+                      const SizedBox(height: AppSpacing.section),
+                      _AdvisoryBanner(
+                        message: _activeAdvisoryMessage!,
+                        onDismiss: () => setState(() => _activeAdvisoryMessage = null),
+                      ),
+                    ],
                     if (_enRouteVolunteerName != null) ...[
                       const SizedBox(height: AppSpacing.section),
                       _VolunteerEnRouteCard(
@@ -329,7 +345,10 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
                       value: _district,
                       label: 'District',
                       onChanged: (v) {
-                        setState(() => _district = v);
+                        setState(() {
+                          _district = v;
+                          _activeAdvisoryMessage = null;
+                        });
                         _load();
                       },
                     ),
@@ -390,6 +409,44 @@ class _ErrorState extends StatelessWidget {
         const SizedBox(height: 20),
         AppButton.secondary(label: 'Retry', onPressed: onRetry, expand: false),
       ],
+    );
+  }
+}
+
+/// An official's IMD advisory broadcast for this citizen's district
+/// ([AdvisoryBroadcastEvent]) — dismissible, and cleared automatically if
+/// the citizen switches to a different district.
+class _AdvisoryBanner extends StatelessWidget {
+  final String message;
+  final VoidCallback onDismiss;
+  const _AdvisoryBanner({required this.message, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      color: AppColors.dangerStrong.withValues(alpha: 0.12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.campaign_rounded, color: AppColors.dangerStrong, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('IMD Advisory', style: AppTypography.cardTitle().copyWith(color: AppColors.dangerStrong)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 20),
+                tooltip: 'Dismiss',
+                onPressed: onDismiss,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(message, style: AppTypography.body()),
+        ],
+      ),
     );
   }
 }

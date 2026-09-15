@@ -190,6 +190,15 @@ class _AlertTile extends StatelessWidget {
           AppColors.accent,
           Icons.directions_run_rounded,
         ),
+      AdvisoryBroadcastEvent(:final district, :final alertMessage) => (
+          Icons.campaign_rounded,
+          AppColors.dangerStrong,
+          'IMD Advisory — $district',
+          alertMessage,
+          'Broadcast',
+          AppColors.dangerStrong,
+          Icons.campaign_rounded,
+        ),
     };
     return AppCard(
       child: Row(

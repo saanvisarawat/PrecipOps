@@ -48,6 +48,16 @@ sealed class DashboardEvent {
           alertLevel: json['alert_level'] as String? ?? 'CRITICAL',
           timestamp: ts,
         ),
+      // Fired by POST /api/v1/citizen/broadcast (Responder Dashboard's
+      // "Broadcast Emergency SMS" button) — this is what actually puts the
+      // IMD advisory in front of citizens with the app open, rather than
+      // that endpoint only ever returning a canned simulated-SMS response.
+      'advisory_broadcast' => AdvisoryBroadcastEvent(
+          district: json['district'] as String? ?? '',
+          zoneId: json['zone_id'] as String? ?? '',
+          alertMessage: json['alert_message'] as String? ?? '',
+          timestamp: ts,
+        ),
       _ => NewSosPendingEvent(
           ticketId: json['ticket_id'].toString(),
           latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
@@ -122,6 +132,22 @@ class SosVerifiedEvent extends DashboardEvent {
   const SosVerifiedEvent({
     required this.ticketId,
     required this.confirmCount,
+    required DateTime timestamp,
+  }) : super(timestamp);
+}
+
+/// An official broadcast an IMD advisory to a district (Responder
+/// Dashboard's "Broadcast Emergency SMS" button) — every citizen currently
+/// viewing that district sees it as a dashboard banner.
+class AdvisoryBroadcastEvent extends DashboardEvent {
+  final String district;
+  final String zoneId;
+  final String alertMessage;
+
+  const AdvisoryBroadcastEvent({
+    required this.district,
+    required this.zoneId,
+    required this.alertMessage,
     required DateTime timestamp,
   }) : super(timestamp);
 }

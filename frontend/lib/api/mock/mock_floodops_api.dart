@@ -1077,6 +1077,12 @@ class MockPreciopsApi implements PreciopsApi {
     required String alertMessage,
   }) async {
     await _delay(500, 1200);
+    _pushDashboardEvent(AdvisoryBroadcastEvent(
+      district: district,
+      zoneId: zoneId,
+      alertMessage: alertMessage,
+      timestamp: DateTime.now(),
+    ));
     return SmsBroadcastResult(
       status: 'SUCCESS',
       broadcastTimestamp: DateTime.now().toUtc().toIso8601String(),
