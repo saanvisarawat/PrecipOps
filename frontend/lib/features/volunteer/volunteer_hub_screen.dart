@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../api/models/auth_models.dart';
 import '../../api/models/kerala_telemetry_models.dart';
@@ -21,6 +22,7 @@ import '../../widgets/district_dropdown.dart';
 import '../../widgets/rainfall_status_card.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/app_toast.dart';
+import '../navigation/models/nav_destination.dart';
 import '../profile/role_gate.dart';
 
 class VolunteerHubScreen extends ConsumerStatefulWidget {
@@ -471,6 +473,15 @@ class _TaskCard extends StatelessWidget {
                 ],
               ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          AppButton.secondary(
+            label: 'Get Directions to Citizen',
+            icon: Icons.alt_route_rounded,
+            onPressed: () => context.push(
+              '/navigate',
+              extra: NavDestination.toCitizen(task.description, LatLng(task.latitude, task.longitude)),
+            ),
           ),
           if (task.status == TaskStatus.assigned) ...[
             const SizedBox(height: AppSpacing.sm),
