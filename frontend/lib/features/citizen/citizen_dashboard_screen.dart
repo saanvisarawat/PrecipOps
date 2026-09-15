@@ -24,6 +24,7 @@ import '../../widgets/app_card.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/district_dropdown.dart';
 import '../../widgets/map_pin_marker.dart';
+import '../../widgets/rainfall_status_card.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/sos_button.dart';
 import '../../widgets/status_badge.dart';
@@ -54,6 +55,10 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
   RouteOption? _route;
   ShelterFeature? _targetShelter;
   bool _routing = false;
+
+  KeralaPredictionResponse? _rainfall;
+  bool _rainfallLoading = true;
+  String? _rainfallError;
 
   /// QA/demo-only affordance — a real GPS fix landing inside a live
   /// inundation polygon is the real trigger, but that requires physically
@@ -146,9 +151,9 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
       _error = null;
       _route = null;
     });
+    final api = ref.read(preciopsApiProvider);
+    final scenario = await _loadRainfallAndResolveScenario(api);
     try {
-      final api = ref.read(preciopsApiProvider);
-      final scenario = await _resolveScenario(api);
       final result = await api.getInundationSimulation(district: _district, scenario: scenario);
       if (!mounted) return;
       setState(() {
@@ -164,23 +169,33 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
     }
   }
 
-  /// Picks the simulated scenario from this district's real PS-71 risk
-  /// level instead of always requesting the worst case. A 404 here means
-  /// "no live telemetry yet" (e.g. right after a redeploy, before the
-  /// hourly risk pipeline has completed its first run) — that's an
-  /// absence of data, not evidence of danger, so it resolves to NORMAL
-  /// rather than misrepresenting every not-yet-ready district as
-  /// critical. Any other failure (network down, 500, timeout) still
-  /// fails safe to EXTREME_EVENT.
-  Future<String> _resolveScenario(PreciopsApi api) async {
+  /// Fetches this district's real PS-71 rainfall/risk feed once — stored
+  /// for the [RainfallStatusCard] display — and picks the simulated
+  /// scenario from its risk level instead of always requesting the worst
+  /// case. A 404 here means "no live telemetry yet" (e.g. right after a
+  /// redeploy, before the hourly risk pipeline has completed its first
+  /// run) — that's an absence of data, not evidence of danger, so it
+  /// resolves to NORMAL rather than misrepresenting every not-yet-ready
+  /// district as critical. Any other failure (network down, 500, timeout)
+  /// still fails safe to EXTREME_EVENT.
+  Future<String> _loadRainfallAndResolveScenario(PreciopsApi api) async {
+    setState(() {
+      _rainfallLoading = true;
+      _rainfallError = null;
+    });
     try {
       final d = KeralaDistricts.byName(_district);
       final risk = await api.predictKerala(lat: d.lat, lon: d.lon, district: d.name);
+      if (mounted) setState(() => _rainfall = risk);
       return scenarioForRiskLevel(risk.riskLevel);
     } on DioException catch (e) {
+      if (mounted) setState(() => _rainfallError = "Couldn't reach the live rainfall feed.");
       return e.response?.statusCode == 404 ? 'NORMAL' : 'EXTREME_EVENT';
     } catch (_) {
+      if (mounted) setState(() => _rainfallError = "Couldn't reach the live rainfall feed.");
       return 'EXTREME_EVENT';
+    } finally {
+      if (mounted) setState(() => _rainfallLoading = false);
     }
   }
 
@@ -320,6 +335,13 @@ class _CitizenDashboardScreenState extends ConsumerState<CitizenDashboardScreen>
                           Text('Hold to send an emergency SOS', style: AppTypography.caption(color: AppColors.textSecondary)),
                         ],
                       ),
+                    ),
+                    const SizedBox(height: AppSpacing.section),
+                    RainfallStatusCard(
+                      district: _district,
+                      data: _rainfall,
+                      loading: _rainfallLoading,
+                      error: _rainfallError,
                     ),
                     if (_activeAdvisoryMessage != null) ...[
                       const SizedBox(height: AppSpacing.section),

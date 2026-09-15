@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../api/models/auth_models.dart';
+import '../../api/models/kerala_telemetry_models.dart';
 import '../../api/models/volunteer_models.dart';
+import '../../core/constants/kerala_districts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
@@ -15,6 +17,8 @@ import '../../providers/auth_provider.dart';
 import '../../providers/service_providers.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/district_dropdown.dart';
+import '../../widgets/rainfall_status_card.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/app_toast.dart';
 import '../profile/role_gate.dart';
@@ -43,10 +47,40 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
   /// pointlessly in the background otherwise.
   Timer? _trackingTimer;
 
+  // District-wise rainfall check — independent of duty status/assigned
+  // tasks, so a volunteer can check conditions anywhere before heading out.
+  String _rainfallDistrict = KeralaDistricts.defaultName;
+  KeralaPredictionResponse? _rainfallData;
+  bool _rainfallLoading = true;
+  String? _rainfallError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRainfall();
+  }
+
   @override
   void dispose() {
     _trackingTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadRainfall() async {
+    setState(() {
+      _rainfallLoading = true;
+      _rainfallError = null;
+    });
+    try {
+      final api = ref.read(preciopsApiProvider);
+      final d = KeralaDistricts.byName(_rainfallDistrict);
+      final result = await api.predictKerala(lat: d.lat, lon: d.lon, district: d.name);
+      if (mounted) setState(() => _rainfallData = result);
+    } catch (_) {
+      if (mounted) setState(() => _rainfallError = "Couldn't reach the live rainfall feed.");
+    } finally {
+      if (mounted) setState(() => _rainfallLoading = false);
+    }
   }
 
   void _syncTrackingTimer() {
@@ -165,6 +199,22 @@ class _VolunteerHubScreenState extends ConsumerState<VolunteerHubScreen> {
             AppSpacing.xxl,
           ),
           children: [
+            DistrictDropdown(
+              value: _rainfallDistrict,
+              label: 'Check Rainfall — District',
+              onChanged: (v) {
+                setState(() => _rainfallDistrict = v);
+                _loadRainfall();
+              },
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            RainfallStatusCard(
+              district: _rainfallDistrict,
+              data: _rainfallData,
+              loading: _rainfallLoading,
+              error: _rainfallError,
+            ),
+            const SizedBox(height: AppSpacing.section),
             AppCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

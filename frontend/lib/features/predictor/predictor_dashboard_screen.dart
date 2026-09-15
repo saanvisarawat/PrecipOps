@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,6 +53,7 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
   KeralaPredictionResponse? _keralaData;
   bool _keralaLoading = true;
   String? _keralaError;
+  bool _keralaNotFound = false;
 
   bool _broadcasting = false;
 
@@ -70,15 +72,23 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
   /// District selection (initial load or dropdown change): fetches this
   /// district's real PS-71 risk first, auto-picks the matching scenario
   /// from it (rather than leaving the simulate panel stuck on whatever
-  /// scenario was last showing), then loads the inundation simulation.
-  /// A manual toggle tap or a telemetry-only refresh goes through
-  /// [_load]/[_loadKerala] directly instead, so it never overrides a
-  /// meteorologist's own manual scenario choice.
+  /// scenario was last showing), then loads the inundation simulation. A
+  /// 404 (no live telemetry yet — e.g. right after a redeploy, before the
+  /// hourly risk pipeline has completed its first run) resolves to NORMAL
+  /// rather than leaving the panel stuck on the previous district's
+  /// scenario or the initial EXTREME_EVENT default. A manual toggle tap
+  /// or a telemetry-only refresh goes through [_load]/[_loadKerala]
+  /// directly instead, so it never overrides a meteorologist's own manual
+  /// scenario choice.
   Future<void> _onDistrictChanged(String district) async {
     setState(() => _district = district);
     await _loadKerala();
-    if (mounted && _keralaData != null) {
-      setState(() => _scenario = scenarioForRiskLevel(_keralaData!.riskLevel));
+    if (mounted) {
+      if (_keralaData != null) {
+        setState(() => _scenario = scenarioForRiskLevel(_keralaData!.riskLevel));
+      } else if (_keralaNotFound) {
+        setState(() => _scenario = 'NORMAL');
+      }
     }
     _load();
   }
@@ -87,6 +97,7 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
     setState(() {
       _keralaLoading = true;
       _keralaError = null;
+      _keralaNotFound = false;
     });
     try {
       final api = ref.read(preciopsApiProvider);
@@ -96,6 +107,13 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
       setState(() {
         _keralaData = result;
         _keralaLoading = false;
+      });
+    } on DioException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _keralaError = "Couldn't reach the live Kerala telemetry feed.";
+        _keralaLoading = false;
+        _keralaNotFound = e.response?.statusCode == 404;
       });
     } catch (e) {
       if (!mounted) return;
