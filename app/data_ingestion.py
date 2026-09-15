@@ -28,6 +28,13 @@ KERALA_DISTRICTS = {
 }
 
 def derive_four_pillars(rain_rate_mm_hr: float, cloud_cover_pct: float, temp_c: float, humidity_pct: float, precip_3d_sum: float):
+    """
+    Synthesizes the 4 PS-71 meteorological pillars using empirical atmospheric models:
+    1. Doppler Weather Radar: Marshall-Palmer relation (Z = 200 * R^1.6 -> dBZ)
+    2. INSAT-3DR Satellite: Cloud-Top Brightness Temperature (CTT)
+    3. Ground AWS: In-situ rain gauge, thermal, and hygrometric telemetry
+    4. NWP Model: 72-hour dynamic forecast precipitation
+    """
     # Pillar 1: Doppler Weather Radar Reflectivity (dBZ)
     r = max(rain_rate_mm_hr, 0.01)
     z_linear = 200.0 * (r ** 1.6)
@@ -63,11 +70,16 @@ def derive_four_pillars(rain_rate_mm_hr: float, cloud_cover_pct: float, temp_c: 
     }
 
 async def fetch_open_meteo_data():
+    """
+    Fetches real-time weather & discharge data with multi-tier failover:
+    Primary: Open-Meteo Dynamic Weather & Flood APIs
+    Secondary: OpenWeatherMap Current Observation + 72-Hour Numerical Forecast
+    """
     weather_url = "https://api.open-meteo.com/v1/forecast"
     flood_url = "https://flood-api.open-meteo.com/v1/flood"
     results = {}
     
-    # Load API Key from environment variable securely
+    # Load API Key from environment variable
     owm_api_key = os.getenv("OPENWEATHERMAP_API_KEY")
 
     async def _get_with_retry(client: httpx.AsyncClient, url: str, params: dict, retries: int = 2, backoff_s: float = 8.0):
@@ -105,33 +117,52 @@ async def fetch_open_meteo_data():
                 w_data = weather_res.json()
             except Exception as e:
                 if owm_api_key:
-                    print(f"⚠️ Open-Meteo Rate Limited for {district}. Activating OWM Fallback...")
+                    print(f"⚠️ Open-Meteo Rate Limited for {district}. Activating OWM Current + 72h Forecast Fallback...")
                     try:
-                        owm_url = f"https://api.openweathermap.org/data/2.5/weather?lat={coords['lat']}&lon={coords['lon']}&appid={owm_api_key}&units=metric"
-                        owm_res = await client.get(owm_url, timeout=5.0)
-                        
-                        if owm_res.status_code == 200:
-                            owm_json = owm_res.json()
-                            rain_data = owm_json.get("rain", {})
+                        owm_curr_url = f"https://api.openweathermap.org/data/2.5/weather?lat={coords['lat']}&lon={coords['lon']}&appid={owm_api_key}&units=metric"
+                        owm_fc_url = f"https://api.openweathermap.org/data/2.5/forecast?lat={coords['lat']}&lon={coords['lon']}&appid={owm_api_key}&units=metric"
+
+                        curr_res = await client.get(owm_curr_url, timeout=6.0)
+                        fc_res = await client.get(owm_fc_url, timeout=6.0)
+
+                        if curr_res.status_code == 200 and fc_res.status_code == 200:
+                            c_json = curr_res.json()
+                            f_json = fc_res.json()
+
+                            rain_data = c_json.get("rain", {})
+                            current_rain_rate = rain_data.get("1h", 0.0)
+
+                            # Aggregate next 72 hours (24 intervals of 3-hour blocks)
+                            forecast_list = f_json.get("list", [])[:24]
+                            precip_72h = sum(float(step.get("rain", {}).get("3h", 0.0) or 0.0) for step in forecast_list)
                             
-                            # Construct w_data to perfectly match Open-Meteo's expected structure
+                            # Next 24 hours (first 8 intervals of 3-hour blocks)
+                            precip_24h = sum(float(step.get("rain", {}).get("3h", 0.0) or 0.0) for step in forecast_list[:8])
+                            remaining_48h = max(0.0, precip_72h - precip_24h)
+
+                            # Structure 16-day array so precip_history[-3:] equals exact 72h forecast accumulation
+                            daily_array = [0.0] * 16
+                            daily_array[-3] = round(remaining_48h / 2.0, 1)
+                            daily_array[-2] = round(remaining_48h / 2.0, 1)
+                            daily_array[-1] = round(precip_24h, 1)
+
                             w_data = {
                                 "current": {
-                                    "precipitation": rain_data.get("1h", 0.0),
-                                    "temperature_2m": owm_json["main"].get("temp", 27.0),
-                                    "relative_humidity_2m": owm_json["main"].get("humidity", 78.0),
-                                    "cloud_cover": owm_json.get("clouds", {}).get("all", 50.0)
+                                    "precipitation": current_rain_rate,
+                                    "temperature_2m": c_json["main"].get("temp", 27.0),
+                                    "relative_humidity_2m": c_json["main"].get("humidity", 78.0),
+                                    "cloud_cover": c_json.get("clouds", {}).get("all", 50.0)
                                 },
                                 "daily": {
-                                    "precipitation_sum": [0.0] * 16 # Fallback zeros for history if blocked
+                                    "precipitation_sum": daily_array
                                 }
                             }
                         else:
-                            print(f"❌ OWM Fallback failed for {district}: {owm_res.status_code}")
-                    except Exception as owm_e:
-                        print(f"❌ OWM Fallback Network Error for {district}: {owm_e}")
+                            print(f"❌ OWM Fallback failed for {district}: Status {curr_res.status_code}/{fc_res.status_code}")
+                    except Exception as owm_err:
+                        print(f"❌ OWM network error for {district}: {owm_err}")
                 else:
-                    print(f"❌ Open-Meteo failed for {district} and no OWM API key found: {e}")
+                    print(f"❌ Open-Meteo failed for {district} and OPENWEATHERMAP_API_KEY is unset: {e}")
 
             # --- 2. FLOOD TELEMETRY FETCH ---
             try:
