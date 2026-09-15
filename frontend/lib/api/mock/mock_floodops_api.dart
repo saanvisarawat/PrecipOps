@@ -1102,6 +1102,14 @@ class MockPreciopsApi implements PreciopsApi {
     required String description,
   }) async {
     await _delay(400, 900);
+    _pushDashboardEvent(GroundTruthSubmittedEvent(
+      district: district,
+      latitude: lat,
+      longitude: lng,
+      observedWaterDepthMeters: observedWaterDepthMeters,
+      description: description,
+      timestamp: DateTime.now(),
+    ));
     return GroundTruthReportResult(
       status: 'VERIFIED_LOGGED',
       reportId: 'GT-REP-${DateTime.now().millisecondsSinceEpoch % 1000000}',

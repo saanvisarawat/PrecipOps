@@ -58,6 +58,19 @@ sealed class DashboardEvent {
           alertMessage: json['alert_message'] as String? ?? '',
           timestamp: ts,
         ),
+      // Fired by POST /api/v1/citizen/verification/upload (Citizen
+      // Dashboard's "Submit Ground Report") — this is what actually gets
+      // a citizen's ground-truth observation in front of an official,
+      // rather than that endpoint only ever returning a canned "forwarded"
+      // response with nothing behind it.
+      'ground_truth_submitted' => GroundTruthSubmittedEvent(
+          district: json['district'] as String? ?? '',
+          latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+          longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+          observedWaterDepthMeters: (json['observed_water_depth_meters'] as num?)?.toDouble() ?? 0,
+          description: json['description'] as String? ?? '',
+          timestamp: ts,
+        ),
       _ => NewSosPendingEvent(
           ticketId: json['ticket_id'].toString(),
           latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
@@ -148,6 +161,27 @@ class AdvisoryBroadcastEvent extends DashboardEvent {
     required this.district,
     required this.zoneId,
     required this.alertMessage,
+    required DateTime timestamp,
+  }) : super(timestamp);
+}
+
+/// A citizen or volunteer submitted a ground-truth observation (Citizen
+/// Dashboard's "Submit Ground Report") — lets an official see it the
+/// moment it comes in, instead of it just disappearing into a canned
+/// "forwarded to the validation pipeline" response.
+class GroundTruthSubmittedEvent extends DashboardEvent {
+  final String district;
+  final double latitude;
+  final double longitude;
+  final double observedWaterDepthMeters;
+  final String description;
+
+  const GroundTruthSubmittedEvent({
+    required this.district,
+    required this.latitude,
+    required this.longitude,
+    required this.observedWaterDepthMeters,
+    required this.description,
     required DateTime timestamp,
   }) : super(timestamp);
 }

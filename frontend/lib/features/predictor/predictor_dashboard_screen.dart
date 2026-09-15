@@ -223,6 +223,12 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
             'New SOS — ${event.district}: ${event.description}',
             kind: AppToastKind.error,
           );
+        } else if (event is GroundTruthSubmittedEvent) {
+          AppToast.show(
+            context,
+            'Ground report — ${event.district}: ${event.observedWaterDepthMeters.toStringAsFixed(2)}m observed.',
+            kind: AppToastKind.neutral,
+          );
         }
       });
     });

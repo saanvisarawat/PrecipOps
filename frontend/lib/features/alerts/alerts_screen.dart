@@ -199,6 +199,15 @@ class _AlertTile extends StatelessWidget {
           AppColors.dangerStrong,
           Icons.campaign_rounded,
         ),
+      GroundTruthSubmittedEvent(:final district, :final observedWaterDepthMeters, :final description) => (
+          Icons.fact_check_rounded,
+          AppColors.info,
+          'Ground Report — $district',
+          '${observedWaterDepthMeters.toStringAsFixed(2)}m observed. $description',
+          'Ground Truth',
+          AppColors.info,
+          Icons.fact_check_rounded,
+        ),
     };
     return AppCard(
       child: Row(
