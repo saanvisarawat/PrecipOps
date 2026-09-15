@@ -1,6 +1,7 @@
 import asyncio
 import httpx
 import math
+import os
 from bs4 import BeautifulSoup
 
 kerala_live_cache = {
@@ -27,13 +28,6 @@ KERALA_DISTRICTS = {
 }
 
 def derive_four_pillars(rain_rate_mm_hr: float, cloud_cover_pct: float, temp_c: float, humidity_pct: float, precip_3d_sum: float):
-    """
-    Synthesizes the 4 PS-71 meteorological pillars using empirical atmospheric models:
-    1. Doppler Weather Radar: Marshall-Palmer relation (Z = 200 * R^1.6 -> dBZ)
-    2. INSAT-3DR Satellite: Cloud-Top Brightness Temperature (CTT)
-    3. Ground AWS: In-situ rain gauge, thermal, and hygrometric telemetry
-    4. NWP Model: 72-hour dynamic forecast precipitation
-    """
     # Pillar 1: Doppler Weather Radar Reflectivity (dBZ)
     r = max(rain_rate_mm_hr, 0.01)
     z_linear = 200.0 * (r ** 1.6)
@@ -41,7 +35,6 @@ def derive_four_pillars(rain_rate_mm_hr: float, cloud_cover_pct: float, temp_c: 
     radar_dbz = max(12.0, min(radar_dbz, 62.0)) if rain_rate_mm_hr > 0 else 12.0
 
     # Pillar 2: INSAT-3DR Satellite (Cloud-Top Temperature in °C)
-    # Deep convective cloudburst cores reach the upper troposphere (-40°C to -65°C)
     ctt = 24.0 - (cloud_cover_pct * 0.45) - min(rain_rate_mm_hr * 2.8, 48.0)
     satellite_ctt = round(max(-68.0, min(ctt, 28.0)), 1)
 
@@ -70,98 +63,14 @@ def derive_four_pillars(rain_rate_mm_hr: float, cloud_cover_pct: float, temp_c: 
     }
 
 async def fetch_open_meteo_data():
-    """
-    Fetches real-time weather & discharge data from Open-Meteo,
-    fusing it with the 4 PS-71 meteorological pillars.
-    """
-    DEMO_MONSOON_MODE = False  # Set to True only if simulating a catastrophic monsoon state
-
-    if DEMO_MONSOON_MODE:
-        return {
-            "Alappuzha": {
-                "rainfall_mm": 115.0, "rainfall_mm_3d_sum": 310.0, "rainfall_mm_7d_sum": 580.0, "rainfall_mm_15d_sum": 790.0,
-                "river_discharge": 780.0, "river_discharge_m3s": 780.0, "river_discharge_3d_sum": 2100.0, "river_discharge_7d_sum": 4500.0, "river_discharge_15d_sum": 7800.0,
-                "pillars": derive_four_pillars(32.0, 98.0, 24.5, 96.0, 310.0)
-            },
-            "Ernakulam": {
-                "rainfall_mm": 130.0, "rainfall_mm_3d_sum": 340.0, "rainfall_mm_7d_sum": 620.0, "rainfall_mm_15d_sum": 840.0,
-                "river_discharge": 890.0, "river_discharge_m3s": 890.0, "river_discharge_3d_sum": 2400.0, "river_discharge_7d_sum": 5100.0, "river_discharge_15d_sum": 8800.0,
-                "pillars": derive_four_pillars(38.0, 100.0, 24.0, 98.0, 340.0)
-            },
-            "Kottayam": {
-                "rainfall_mm": 105.0, "rainfall_mm_3d_sum": 280.0, "rainfall_mm_7d_sum": 520.0, "rainfall_mm_15d_sum": 710.0,
-                "river_discharge": 650.0, "river_discharge_m3s": 650.0, "river_discharge_3d_sum": 1800.0, "river_discharge_7d_sum": 3900.0, "river_discharge_15d_sum": 6700.0,
-                "pillars": derive_four_pillars(28.0, 95.0, 25.0, 94.0, 280.0)
-            },
-            "Idukki": {
-                "rainfall_mm": 95.0, "rainfall_mm_3d_sum": 250.0, "rainfall_mm_7d_sum": 480.0, "rainfall_mm_15d_sum": 650.0,
-                "river_discharge": 420.0, "river_discharge_m3s": 420.0, "river_discharge_3d_sum": 1200.0, "river_discharge_7d_sum": 2600.0, "river_discharge_15d_sum": 4600.0,
-                "pillars": derive_four_pillars(26.0, 96.0, 20.0, 95.0, 250.0)
-            },
-            "Wayanad": {
-                "rainfall_mm": 88.0, "rainfall_mm_3d_sum": 230.0, "rainfall_mm_7d_sum": 440.0, "rainfall_mm_15d_sum": 610.0,
-                "river_discharge": 380.0, "river_discharge_m3s": 380.0, "river_discharge_3d_sum": 1050.0, "river_discharge_7d_sum": 2300.0, "river_discharge_15d_sum": 4100.0,
-                "pillars": derive_four_pillars(24.0, 94.0, 21.0, 93.0, 230.0)
-            },
-            "Thrissur": {
-                "rainfall_mm": 70.0, "rainfall_mm_3d_sum": 180.0, "rainfall_mm_7d_sum": 360.0, "rainfall_mm_15d_sum": 510.0,
-                "river_discharge": 210.0, "river_discharge_m3s": 210.0, "river_discharge_3d_sum": 600.0, "river_discharge_7d_sum": 1300.0, "river_discharge_15d_sum": 2400.0,
-                "pillars": derive_four_pillars(18.0, 90.0, 26.0, 90.0, 180.0)
-            },
-            "Pathanamthitta": {
-                "rainfall_mm": 60.0, "rainfall_mm_3d_sum": 160.0, "rainfall_mm_7d_sum": 320.0, "rainfall_mm_15d_sum": 460.0,
-                "river_discharge": 190.0, "river_discharge_m3s": 190.0, "river_discharge_3d_sum": 520.0, "river_discharge_7d_sum": 1150.0, "river_discharge_15d_sum": 2100.0,
-                "pillars": derive_four_pillars(15.0, 88.0, 25.5, 88.0, 160.0)
-            },
-            "Malappuram": {
-                "rainfall_mm": 40.0, "rainfall_mm_3d_sum": 110.0, "rainfall_mm_7d_sum": 220.0, "rainfall_mm_15d_sum": 340.0,
-                "river_discharge": 80.0, "river_discharge_m3s": 80.0, "river_discharge_3d_sum": 230.0, "river_discharge_7d_sum": 510.0, "river_discharge_15d_sum": 980.0,
-                "pillars": derive_four_pillars(10.0, 80.0, 27.0, 85.0, 110.0)
-            },
-            "Kozhikode": {
-                "rainfall_mm": 35.0, "rainfall_mm_3d_sum": 95.0, "rainfall_mm_7d_sum": 190.0, "rainfall_mm_15d_sum": 300.0,
-                "river_discharge": 60.0, "river_discharge_m3s": 60.0, "river_discharge_3d_sum": 170.0, "river_discharge_7d_sum": 380.0, "river_discharge_15d_sum": 750.0,
-                "pillars": derive_four_pillars(8.0, 75.0, 27.5, 84.0, 95.0)
-            },
-            "Kannur": {
-                "rainfall_mm": 25.0, "rainfall_mm_3d_sum": 70.0, "rainfall_mm_7d_sum": 140.0, "rainfall_mm_15d_sum": 220.0,
-                "river_discharge": 45.0, "river_discharge_m3s": 45.0, "river_discharge_3d_sum": 125.0, "river_discharge_7d_sum": 280.0, "river_discharge_15d_sum": 540.0,
-                "pillars": derive_four_pillars(5.0, 70.0, 28.0, 80.0, 70.0)
-            },
-            "Kasaragod": {
-                "rainfall_mm": 20.0, "rainfall_mm_3d_sum": 55.0, "rainfall_mm_7d_sum": 115.0, "rainfall_mm_15d_sum": 180.0,
-                "river_discharge": 40.0, "river_discharge_m3s": 40.0, "river_discharge_3d_sum": 110.0, "river_discharge_7d_sum": 250.0, "river_discharge_15d_sum": 480.0,
-                "pillars": derive_four_pillars(4.0, 65.0, 28.5, 78.0, 55.0)
-            },
-            "Palakkad": {
-                "rainfall_mm": 18.0, "rainfall_mm_3d_sum": 48.0, "rainfall_mm_7d_sum": 98.0, "rainfall_mm_15d_sum": 160.0,
-                "river_discharge": 45.0, "river_discharge_m3s": 45.0, "river_discharge_3d_sum": 120.0, "river_discharge_7d_sum": 270.0, "river_discharge_15d_sum": 510.0,
-                "pillars": derive_four_pillars(3.0, 60.0, 29.0, 75.0, 48.0)
-            },
-            "Kollam": {
-                "rainfall_mm": 15.0, "rainfall_mm_3d_sum": 40.0, "rainfall_mm_7d_sum": 85.0, "rainfall_mm_15d_sum": 140.0,
-                "river_discharge": 35.0, "river_discharge_m3s": 35.0, "river_discharge_3d_sum": 95.0, "river_discharge_7d_sum": 210.0, "river_discharge_15d_sum": 410.0,
-                "pillars": derive_four_pillars(2.0, 55.0, 28.0, 76.0, 40.0)
-            },
-            "Thiruvananthapuram": {
-                "rainfall_mm": 12.0, "rainfall_mm_3d_sum": 32.0, "rainfall_mm_7d_sum": 70.0, "rainfall_mm_15d_sum": 120.0,
-                "river_discharge": 30.0, "river_discharge_m3s": 30.0, "river_discharge_3d_sum": 80.0, "river_discharge_7d_sum": 180.0, "river_discharge_15d_sum": 350.0,
-                "pillars": derive_four_pillars(1.5, 50.0, 29.5, 74.0, 32.0)
-            }
-        }
-
     weather_url = "https://api.open-meteo.com/v1/forecast"
     flood_url = "https://flood-api.open-meteo.com/v1/flood"
     results = {}
+    
+    # Load API Key from environment variable securely
+    owm_api_key = os.getenv("OPENWEATHERMAP_API_KEY")
 
     async def _get_with_retry(client: httpx.AsyncClient, url: str, params: dict, retries: int = 2, backoff_s: float = 8.0):
-        """
-        A live run showed the first ~10 of 14 districts succeed and only
-        the last few 429 — a rolling per-minute limit getting tripped
-        partway through the run, not an outright IP block. A short wait
-        and retry clears that far more often than immediately giving up
-        and falling back to placeholder (0.0) data for the rest of the run.
-        """
         last_exc = None
         for attempt in range(retries + 1):
             try:
@@ -180,80 +89,96 @@ async def fetch_open_meteo_data():
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         for district, coords in KERALA_DISTRICTS.items():
+            w_data = {}
+            f_data = {}
+            
+            # --- 1. WEATHER TELEMETRY FETCH ---
             try:
                 weather_res = await _get_with_retry(
-                    client,
-                    weather_url,
-                    {
-                        "latitude": coords["lat"],
-                        "longitude": coords["lon"],
+                    client, weather_url, {
+                        "latitude": coords["lat"], "longitude": coords["lon"],
                         "current": "precipitation,temperature_2m,relative_humidity_2m,cloud_cover",
                         "daily": "precipitation_sum",
-                        "past_days": 15,
-                        "forecast_days": 1,
-                        "timezone": "auto"
+                        "past_days": 15, "forecast_days": 1, "timezone": "auto"
                     }
                 )
-                flood_res = await _get_with_retry(
-                    client,
-                    flood_url,
-                    {
-                        "latitude": coords["lat"],
-                        "longitude": coords["lon"],
-                        "daily": "river_discharge",
-                        "past_days": 15,
-                        "forecast_days": 1
-                    }
-                )
-
                 w_data = weather_res.json()
-                f_data = flood_res.json()
-
-                current_w = w_data.get("current") or {}
-                daily_weather = w_data.get("daily") or {}
-                daily_flood = f_data.get("daily") or {}
-
-                precip_history = daily_weather.get("precipitation_sum") or [0.0] * 16
-                discharge_history = daily_flood.get("river_discharge") or [0.0] * 16
-
-                precip_history = [float(x) if x is not None else 0.0 for x in precip_history]
-                discharge_history = [float(x) if x is not None else 0.0 for x in discharge_history]
-
-                rain_rate = float(current_w.get("precipitation", 0.0) or 0.0)
-                temp_c = float(current_w.get("temperature_2m", 27.0) or 27.0)
-                humidity = float(current_w.get("relative_humidity_2m", 78.0) or 78.0)
-                cloud_cover = float(current_w.get("cloud_cover", 50.0) or 50.0)
-                precip_3d = sum(precip_history[-3:])
-
-                # Synthesize the 4 PS-71 pillars dynamically from the real observations
-                pillars = derive_four_pillars(rain_rate, cloud_cover, temp_c, humidity, precip_3d)
-
-                results[district] = {
-                    "rainfall_mm": precip_history[-1],
-                    "rainfall_mm_3d_sum": precip_3d,
-                    "rainfall_mm_7d_sum": sum(precip_history[-7:]),
-                    "rainfall_mm_15d_sum": sum(precip_history[-15:]),
-                    "river_discharge": discharge_history[-1],
-                    "river_discharge_m3s": discharge_history[-1],
-                    "river_discharge_3d_sum": sum(discharge_history[-3:]),
-                    "river_discharge_7d_sum": sum(discharge_history[-7:]),
-                    "river_discharge_15d_sum": sum(discharge_history[-15:]),
-                    "pillars": pillars
-                }
             except Exception as e:
-                print(f"Failed to fetch Meteo data for {district}: {e}")
-                results[district] = {
-                    "rainfall_mm": 0.0,
-                    "rainfall_mm_3d_sum": 0.0,
-                    "rainfall_mm_7d_sum": 0.0,
-                    "river_discharge": 0.0,
-                    "river_discharge_m3s": 0.0,
-                    "river_discharge_3d_sum": 0.0,
-                    "river_discharge_7d_sum": 0.0,
-                    "river_discharge_15d_sum": 0.0,
-                    "pillars": derive_four_pillars(0.0, 30.0, 28.0, 70.0, 0.0)
-                }
-            await asyncio.sleep(2.0)  # stagger requests to avoid bursting Open-Meteo — a rolling per-minute limit was still tripping partway through a 14-district run at 0.5s
+                if owm_api_key:
+                    print(f"⚠️ Open-Meteo Rate Limited for {district}. Activating OWM Fallback...")
+                    try:
+                        owm_url = f"https://api.openweathermap.org/data/2.5/weather?lat={coords['lat']}&lon={coords['lon']}&appid={owm_api_key}&units=metric"
+                        owm_res = await client.get(owm_url, timeout=5.0)
+                        
+                        if owm_res.status_code == 200:
+                            owm_json = owm_res.json()
+                            rain_data = owm_json.get("rain", {})
+                            
+                            # Construct w_data to perfectly match Open-Meteo's expected structure
+                            w_data = {
+                                "current": {
+                                    "precipitation": rain_data.get("1h", 0.0),
+                                    "temperature_2m": owm_json["main"].get("temp", 27.0),
+                                    "relative_humidity_2m": owm_json["main"].get("humidity", 78.0),
+                                    "cloud_cover": owm_json.get("clouds", {}).get("all", 50.0)
+                                },
+                                "daily": {
+                                    "precipitation_sum": [0.0] * 16 # Fallback zeros for history if blocked
+                                }
+                            }
+                        else:
+                            print(f"❌ OWM Fallback failed for {district}: {owm_res.status_code}")
+                    except Exception as owm_e:
+                        print(f"❌ OWM Fallback Network Error for {district}: {owm_e}")
+                else:
+                    print(f"❌ Open-Meteo failed for {district} and no OWM API key found: {e}")
+
+            # --- 2. FLOOD TELEMETRY FETCH ---
+            try:
+                flood_res = await _get_with_retry(
+                    client, flood_url, {
+                        "latitude": coords["lat"], "longitude": coords["lon"],
+                        "daily": "river_discharge",
+                        "past_days": 15, "forecast_days": 1
+                    }
+                )
+                f_data = flood_res.json()
+            except Exception as e:
+                print(f"⚠️ Flood data fetch failed for {district}: {e}")
+
+            # --- 3. PARSING & MERGING ---
+            current_w = w_data.get("current") or {}
+            daily_weather = w_data.get("daily") or {}
+            daily_flood = f_data.get("daily") or {}
+
+            precip_history = daily_weather.get("precipitation_sum") or [0.0] * 16
+            discharge_history = daily_flood.get("river_discharge") or [0.0] * 16
+
+            precip_history = [float(x) if x is not None else 0.0 for x in precip_history]
+            discharge_history = [float(x) if x is not None else 0.0 for x in discharge_history]
+
+            rain_rate = float(current_w.get("precipitation", 0.0) or 0.0)
+            temp_c = float(current_w.get("temperature_2m", 27.0) or 27.0)
+            humidity = float(current_w.get("relative_humidity_2m", 78.0) or 78.0)
+            cloud_cover = float(current_w.get("cloud_cover", 50.0) or 50.0)
+            precip_3d = sum(precip_history[-3:])
+
+            pillars = derive_four_pillars(rain_rate, cloud_cover, temp_c, humidity, precip_3d)
+
+            results[district] = {
+                "rainfall_mm": precip_history[-1],
+                "rainfall_mm_3d_sum": precip_3d,
+                "rainfall_mm_7d_sum": sum(precip_history[-7:]),
+                "rainfall_mm_15d_sum": sum(precip_history[-15:]),
+                "river_discharge": discharge_history[-1],
+                "river_discharge_m3s": discharge_history[-1],
+                "river_discharge_3d_sum": sum(discharge_history[-3:]),
+                "river_discharge_7d_sum": sum(discharge_history[-7:]),
+                "river_discharge_15d_sum": sum(discharge_history[-15:]),
+                "pillars": pillars
+            }
+            
+            await asyncio.sleep(2.0)
 
     return results
 
