@@ -66,9 +66,25 @@ async def broadcast_offline_sms(payload: SMSBroadcastRequest):
 @router.post("/verification/upload", response_model=GroundTruthResponse)
 async def upload_ground_truth(payload: GroundTruthUpload):
     """
-    Accepts crowd-sourced ground-truth reports and geo-tagged observations 
+    Accepts crowd-sourced ground-truth reports and geo-tagged observations
     from citizens/volunteers to validate inundation prediction accuracy in real time.
     """
+    # This previously did nothing but return a canned "Forwarded to IMD
+    # Predictor validation pipeline" message — it was never actually
+    # forwarded anywhere. Broadcasting it over the same dashboard websocket
+    # every other real-time event uses is what actually gets it in front
+    # of an official, the same fix already applied to /citizen/broadcast.
+    from app.main import manager
+    await manager.broadcast({
+        "type": "ground_truth_submitted",
+        "district": payload.district,
+        "latitude": payload.latitude,
+        "longitude": payload.longitude,
+        "observed_water_depth_meters": payload.observed_water_depth_meters,
+        "description": payload.description,
+        "reporter_role": payload.reporter_role,
+    })
+
     now = datetime.datetime.utcnow().isoformat() + "Z"
     report_id = f"GT-REP-{datetime.datetime.utcnow().strftime('%H%M%S')}"
     return GroundTruthResponse(
