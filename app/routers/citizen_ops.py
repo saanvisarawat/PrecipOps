@@ -35,9 +35,24 @@ class GroundTruthResponse(BaseModel):
 @router.post("/broadcast", response_model=SMSBroadcastResponse)
 async def broadcast_offline_sms(payload: SMSBroadcastRequest):
     """
-    Triggers emergency SMS fallback broadcasting to registered mobile devices 
+    Triggers emergency SMS fallback broadcasting to registered mobile devices
     within the targeted inundation zone when cellular internet infrastructure is down.
     """
+    # Deferred import (not at module load time) to avoid a circular import —
+    # `manager` lives in main.py, which is what imports and mounts this
+    # router in the first place. This was previously simulated-only (fake
+    # recipient count, no actual delivery to anyone); broadcasting over the
+    # same dashboard websocket every other real-time event already uses is
+    # what actually gets this advisory in front of citizens with the app
+    # open, instead of only ever existing as a canned response object.
+    from app.main import manager
+    await manager.broadcast({
+        "type": "advisory_broadcast",
+        "district": payload.district,
+        "zone_id": payload.zone_id,
+        "alert_message": payload.alert_message,
+    })
+
     now = datetime.datetime.utcnow().isoformat() + "Z"
     return SMSBroadcastResponse(
         status="SUCCESS",
