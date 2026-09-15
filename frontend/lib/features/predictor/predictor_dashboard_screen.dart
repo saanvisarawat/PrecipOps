@@ -53,6 +53,8 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
   bool _keralaLoading = true;
   String? _keralaError;
 
+  bool _broadcasting = false;
+
   @override
   void initState() {
     super.initState();
@@ -126,6 +128,38 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
         _error = "Couldn't reach the inundation model. Pull to retry.";
         _loading = false;
       });
+    }
+  }
+
+  /// The meteorologist reviews the simulated advisory, then approves it
+  /// for real distribution — reuses the same broadcast pathway as the
+  /// Responder Dashboard's "Broadcast Emergency SMS" (POST
+  /// /api/v1/citizen/broadcast), which pushes an AdvisoryBroadcastEvent to
+  /// every citizen currently viewing this district.
+  Future<void> _approveAndBroadcast() async {
+    if (_data == null) return;
+    setState(() => _broadcasting = true);
+    try {
+      final api = ref.read(preciopsApiProvider);
+      final zoneId = _data!.inundationZones.isNotEmpty ? _data!.inundationZones.first.zoneId : 'ADVISORY-$_district';
+      final result = await api.broadcastEmergencySms(
+        district: _district,
+        zoneId: zoneId,
+        alertMessage: _data!.advisoryBulletin,
+      );
+      if (mounted) {
+        AppToast.show(
+          context,
+          'Advisory broadcast to citizens in $_district (${result.simulatedSmsRecipientsCount} reached).',
+          kind: AppToastKind.success,
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(context, "Couldn't broadcast the advisory — try again.", kind: AppToastKind.error);
+      }
+    } finally {
+      if (mounted) setState(() => _broadcasting = false);
     }
   }
 
@@ -279,14 +313,15 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
                         _AdvisoryPanel(data: _data!),
                         const SizedBox(height: AppSpacing.section),
                         AppButton(
-                          label: 'Approve & Broadcast Alert',
+                          label: _broadcasting ? 'Broadcasting…' : 'Approve & Broadcast Alert',
                           icon: Icons.campaign_rounded,
                           color: AppColors.alertLevelColor(_data!.alertLevel),
-                          onPressed: null,
+                          isLoading: _broadcasting,
+                          onPressed: _broadcasting ? null : _approveAndBroadcast,
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Broadcast-approval endpoint pending backend — review only for now.',
+                          'Broadcasts this advisory to citizens currently viewing $_district.',
                           style: AppTypography.caption(),
                           textAlign: TextAlign.center,
                         ),
