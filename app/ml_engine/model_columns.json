@@ -1,0 +1,76 @@
+{
+  "features": [
+    "om_rainfall_mm",
+    "om_river_discharge",
+    "om_rainfall_mm_3d_sum",
+    "om_rainfall_mm_7d_sum",
+    "om_rainfall_mm_15d_sum",
+    "om_river_discharge_3d_sum",
+    "om_river_discharge_7d_sum",
+    "om_river_discharge_15d_sum",
+    "srtm_elevation_m",
+    "srtm_slope_deg",
+    "aws_rainfall_mm",
+    "aws_observed",
+    "nwp_precipitation_sum",
+    "nwp_temperature_2m_max",
+    "nwp_temperature_2m_min",
+    "nwp_wind_speed_10m_max",
+    "nwp_relative_humidity_2m_mean",
+    "nwp_observed",
+    "sat_precipitation_mm",
+    "sat_observed",
+    "rad_dbz",
+    "rad_rainfall_rate_mm_hr",
+    "historical_flood_count",
+    "consensus_rainfall_mm",
+    "consensus_rainfall_sources",
+    "season_sin",
+    "season_cos",
+    "is_monsoon_season"
+  ],
+  "sources_used": {
+    "om_": [
+      "om_rainfall_mm",
+      "om_river_discharge",
+      "om_rainfall_mm_3d_sum",
+      "om_rainfall_mm_7d_sum",
+      "om_rainfall_mm_15d_sum",
+      "om_river_discharge_3d_sum",
+      "om_river_discharge_7d_sum",
+      "om_river_discharge_15d_sum"
+    ],
+    "srtm_": [
+      "srtm_elevation_m",
+      "srtm_slope_deg"
+    ],
+    "aws_": [
+      "aws_rainfall_mm",
+      "aws_observed"
+    ],
+    "nwp_": [
+      "nwp_precipitation_sum",
+      "nwp_temperature_2m_max",
+      "nwp_temperature_2m_min",
+      "nwp_wind_speed_10m_max",
+      "nwp_relative_humidity_2m_mean",
+      "nwp_observed"
+    ],
+    "sat_": [
+      "sat_precipitation_mm",
+      "sat_observed"
+    ],
+    "rad_": [
+      "rad_dbz",
+      "rad_rainfall_rate_mm_hr"
+    ]
+  },
+  "phases_missing": [],
+  "classes": [
+    "No Rain",
+    "Light",
+    "Moderate",
+    "Severe"
+  ],
+  "severe_threshold": 0.2
+}

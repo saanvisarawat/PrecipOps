@@ -36,18 +36,19 @@ class BulkReportUpload(BaseModel):
     reports: List[BulkReportItem]
 
 class RiskPredictionRequest(BaseModel):
-    rainfall_mm: float
-    river_discharge: float
-    elevation_m: float
-    slope_deg: float
-    dist_nearest_river_km: float
-    rainfall_mm_3d_sum: float
-    rainfall_mm_7d_sum: float
-    rainfall_mm_15d_sum: float
-    river_discharge_3d_sum: float
-    river_discharge_7d_sum: float
-    river_discharge_15d_sum: float
-    historical_flood_count: float
+    # Features required by the trained XGBoost flood risk engine
+    # Default values provided to simulate a true "Severe" 4-pillar consensus event
+    om_rainfall_mm: float = 185.0
+    om_river_discharge: float = 950.0
+    om_rainfall_mm_15d_sum: float = 450.0
+    srtm_elevation_m: float = 4.5
+    srtm_slope_deg: float = 0.2
+    aws_rainfall_mm: float = 180.0
+    sat_precipitation_mm: float = 190.0
+    nwp_precipitation_sum: float = 420.0
+    consensus_rainfall_mm: float = 185.0
+    consensus_rainfall_sources: float = 4.0
+    historical_flood_count: float = 14.0
 
 class ChatRequest(BaseModel):
     message: str
@@ -114,7 +115,7 @@ class AgentRunLogResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-# --- ADD AT THE BOTTOM OF app/schemas.py ---
+# --- INUNDATION & PS71 TELEMETRY SCHEMAS ---
 
 class InundationPolygon(BaseModel):
     zone_id: str
