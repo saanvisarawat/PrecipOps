@@ -68,6 +68,8 @@ class ShelterCard extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               distanceKm == null ? shelter.district : '${shelter.district} · ${distanceKm!.toStringAsFixed(1)} km',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: AppTypography.caption(),
             ),
             const Spacer(),

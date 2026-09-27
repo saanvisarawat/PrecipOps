@@ -362,23 +362,31 @@ class _TacticalMap extends StatelessWidget {
             ),
             Positioned(
               left: 12,
+              right: 12,
               top: 12,
-              child: StatusBadge(
-                label: zone != null ? 'Zone ${zone!.zoneId} · ${zone!.avgWaterDepthMeters.toStringAsFixed(2)}m' : 'No active zone',
-                color: depthColor,
-                icon: Icons.water_rounded,
-                filled: true,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: StatusBadge(
+                  label: zone != null ? 'Zone ${zone!.zoneId} · ${zone!.avgWaterDepthMeters.toStringAsFixed(2)}m' : 'No active zone',
+                  color: depthColor,
+                  icon: Icons.water_rounded,
+                  filled: true,
+                ),
               ),
             ),
             if (route != null)
               Positioned(
+                left: 12,
                 right: 12,
                 bottom: 12,
-                child: StatusBadge(
-                  label: route!.crossesBlockedZone ? 'Route crosses flooding' : 'Route avoids flooded zone',
-                  color: route!.crossesBlockedZone ? AppColors.warning : AppColors.info,
-                  icon: Icons.alt_route_rounded,
-                  filled: true,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: StatusBadge(
+                    label: route!.crossesBlockedZone ? 'Route crosses flooding' : 'Route avoids flooded zone',
+                    color: route!.crossesBlockedZone ? AppColors.warning : AppColors.info,
+                    icon: Icons.alt_route_rounded,
+                    filled: true,
+                  ),
                 ),
               ),
           ],

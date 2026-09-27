@@ -36,6 +36,7 @@ class StatCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
             Icon(icon, size: 17, color: accent ?? AppColors.textTertiary),
@@ -43,6 +44,8 @@ class StatCard extends StatelessWidget {
           ],
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontFamily: 'Inter',
               color: AppColors.textSecondary,
@@ -53,6 +56,8 @@ class StatCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontFamily: 'Inter',
               color: valueColor ?? AppColors.textPrimary,
@@ -65,6 +70,8 @@ class StatCard extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               trend!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontFamily: 'Inter',
                 color: AppColors.accent,
@@ -94,7 +101,7 @@ class StatGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
-      childAspectRatio: 1.25,
+      childAspectRatio: 1.05,
       children: cards,
     );
   }

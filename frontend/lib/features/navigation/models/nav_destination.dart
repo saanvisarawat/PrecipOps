@@ -35,4 +35,14 @@ class NavDestination {
         subtitle: 'Volunteer — en route to you',
         point: point,
       );
+
+  /// A citizen's SOS location, from a volunteer's assigned task — the
+  /// symmetric counterpart to [toVolunteer]. `VolunteerTask.latitude`/
+  /// `longitude` are fixed at report time (the incident location), so
+  /// this is exact, not a moving-target snapshot the way [toVolunteer] is.
+  factory NavDestination.toCitizen(String description, LatLng point) => NavDestination(
+        label: 'Citizen SOS',
+        subtitle: description,
+        point: point,
+      );
 }

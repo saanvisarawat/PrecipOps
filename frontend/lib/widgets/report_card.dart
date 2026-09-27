@@ -60,13 +60,22 @@ class ReportCard extends StatelessWidget {
                           size: 15,
                         ),
                         const SizedBox(width: 6),
-                        Text(report.ticketId, style: AppTypography.caption()),
+                        Flexible(
+                          child: Text(
+                            report.ticketId,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.caption(),
+                          ),
+                        ),
                         const Spacer(),
                         Text(
                           // reportedAt comes off the wire as a UTC-aware
                           // DateTime (server's client_timestamp) — format it
                           // in the viewer's own timezone, not raw UTC.
                           '$distanceLabel · ${DateFormat.Hm().format(report.reportedAt.toLocal())}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: AppTypography.caption(),
                         ),
                       ],
