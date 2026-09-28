@@ -159,7 +159,9 @@ async def run_kerala_flood_pipeline():
         # 3. BUILD THE 4 DASHBOARD PILLARS 
         simulated_radar = generate_realistic_radar_pillar(live_features["om_rainfall_mm"], district)
 
-        four_pillars = {
+        # Raw model-input view of the 4 pillars. Kept under its own key so it
+        # doesn't clobber the live telemetry pillars the frontend HUD binds to.
+        model_inputs = {
             "observational": {
                 "source": "IMD Gridded Gauge / AWS Network",
                 "ground_rainfall_mm": live_features["om_rainfall_mm"], 
@@ -192,9 +194,12 @@ async def run_kerala_flood_pipeline():
             "is_high_risk": is_high_risk,
             "alert_level": "CRITICAL" if is_high_risk else "WARNING" if risk_score >= 39 else "NORMAL",
             "top_factors": ["om_rainfall_mm", "srtm_elevation_m"],
-            "pillars": four_pillars,
-            "telemetry_pillars": four_pillars,
-            "estimated_depth_cm": depth_cm  # Exposes the new physical water depth to the frontend
+            # weather_data["pillars"] (from derive_four_pillars) is the shape the
+            # frontend HUD parses: satellite_insat3dr / radar_dwr /
+            # observational_aws / nwp_forecast.
+            "pillars": weather_data.get("pillars", {}),
+            "model_inputs": model_inputs,
+            "estimated_depth_cm": depth_cm
         }
 
         # 5. Trigger Pending Database Alerts 
@@ -1244,7 +1249,12 @@ PS71_TERMINOLOGY_MAP = {
     "river_discharge": "Doppler Weather Radar (Streamflow)",
     "rainfall_mm": "Observational AWS Data (Ground)",
     "rainfall_mm_3d_sum": "NWP Precipitation Forecast",
-    "dist_nearest_river_km": "Geospatial Catchment Baseline"
+    "dist_nearest_river_km": "Geospatial Catchment Baseline",
+    "om_rainfall_mm": "Observational AWS Data (Ground)",
+    "om_river_discharge": "Doppler Weather Radar (Streamflow)",
+    "om_rainfall_mm_15d_sum": "NWP Precipitation Forecast",
+    "srtm_elevation_m": "INSAT-3DR Topography (Satellite)",
+    "srtm_slope_deg": "DEM-Derived Avalanche Risk (Satellite)",
 }
 
 @app.post("/api/ml/predict-kerala", tags=["PS 71 Inundation"])
@@ -1269,7 +1279,8 @@ async def predict_kerala_flood(payload: KeralaPredictionRequest):
         "risk_level": live_data.get("alert_level", "NORMAL"),
         "is_high_risk": live_data.get("is_high_risk", False),
         "top_factors": advanced_factors,
-        "telemetry_pillars": live_data.get("pillars", {})  # This is the line that was missing
+        "telemetry_pillars": live_data.get("pillars", {}),
+        "estimated_depth_cm": live_data.get("estimated_depth_cm", 0.0),
     }
 
 @app.post("/api/volunteers/tasks/{task_id}/accept", tags=["Volunteers"])

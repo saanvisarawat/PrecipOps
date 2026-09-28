@@ -175,38 +175,29 @@ Marker color/label is derived client-side from
 ## 4. ML flood risk predictor
 
 ### `POST /api/predict/risk`
-Request (`RiskPredictionRequest`):
-```json
-{
-  "district": "Idukki",
-  "rainfall_mm_3day": 180,
-  "elevation_m": 1500,
-  "slope_deg": 26,
-  "soil_saturation_pct": 70,
-  "river_proximity_km": 0.8,
-  "reservoir_level_pct": 65
-}
-```
+Request (`RiskPredictionRequest`) — all fields optional, defaulting to a
+"Severe" 4-pillar consensus scenario: `om_rainfall_mm`, `om_river_discharge`,
+`om_rainfall_mm_15d_sum`, `srtm_elevation_m`, `srtm_slope_deg`,
+`aws_rainfall_mm`, `sat_precipitation_mm`, `nwp_precipitation_sum`,
+`consensus_rainfall_mm`, `consensus_rainfall_sources`,
+`historical_flood_count`.
+
 Response:
 ```json
 {
-  "risk_score": 62.4,
-  "district": "Idukki",
-  "top_factors": [
-    { "factor": "Heavy 3-Day Rainfall", "weight": 24.1 },
-    { "factor": "Reservoir/Dam Level", "weight": 6.5 }
-  ]
+  "risk_score": 90,
+  "risk_probability": 0.87,
+  "is_high_risk": true,
+  "threshold_used": 0.2,
+  "top_factors": ["om_rainfall_mm", "srtm_elevation_m"],
+  "estimated_depth_cm": 42.0,
+  "risk_category": "Severe",
+  "all_probabilities": {}
 }
 ```
-`risk_score` is 0–100. `top_factors` is pre-sorted by `|weight|` descending
-by the mock; assume the real SHAP explainer output needs the same
-client-side sort if it isn't already sorted.
-
-> Judgment call: features.docx names "rainfall, elevation, slope, etc."
-> without an exhaustive field list. This build adds
-> `soil_saturation_pct`, `river_proximity_km`, and `reservoir_level_pct` as
-> plausible additional ML inputs — check the real model's actual feature
-> list and adjust the form/request shape to match.
+`risk_score` is one of 10 / 35 / 65 / 90 (No Rain / Light / Moderate /
+Severe). The Flutter app does not call this endpoint; it uses
+`POST /api/ml/predict-kerala`, which now also returns `estimated_depth_cm`.
 
 ---
 

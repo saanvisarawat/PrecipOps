@@ -319,6 +319,13 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
                           _FourPillarHud(pillars: _keralaData!.telemetryPillars),
                           const SizedBox(height: AppSpacing.sm),
                           _TopFactorsChips(factors: _keralaData!.topFactors, riskLevel: _keralaData!.riskLevel),
+                          if (_keralaData!.estimatedDepthCm > 0) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(
+                              'Estimated flood depth: ${_keralaData!.estimatedDepthCm.toStringAsFixed(0)} cm',
+                              style: AppTypography.body(color: AppColors.textSecondary),
+                            ),
+                          ],
                         ],
                         const SectionHeader(title: 'Inundation Map'),
                         _InundationMap(

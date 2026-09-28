@@ -104,6 +104,7 @@ class KeralaPredictionResponse {
   final String riskLevel;
   final bool isHighRisk;
   final List<String> topFactors;
+  final double estimatedDepthCm;
   final KeralaTelemetryPillars telemetryPillars;
 
   const KeralaPredictionResponse({
@@ -115,6 +116,7 @@ class KeralaPredictionResponse {
     required this.riskLevel,
     required this.isHighRisk,
     required this.topFactors,
+    this.estimatedDepthCm = 0,
     required this.telemetryPillars,
   });
 
@@ -127,6 +129,7 @@ class KeralaPredictionResponse {
         riskLevel: (json['risk_level'] as String? ?? 'NORMAL').toUpperCase(),
         isHighRisk: json['is_high_risk'] as bool? ?? false,
         topFactors: (json['top_factors'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        estimatedDepthCm: (json['estimated_depth_cm'] as num?)?.toDouble() ?? 0,
         telemetryPillars:
             KeralaTelemetryPillars.fromJson((json['telemetry_pillars'] as Map<String, dynamic>?) ?? const {}),
       );
