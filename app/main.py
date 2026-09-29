@@ -3,6 +3,8 @@ import os
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
+import json
+
 from app.routers import routing
 from app.routers import analytics
 from app.routers import ps71
@@ -14,7 +16,7 @@ from app.routers import protocol
 from fastapi import Form, Response
 import base64
 import io
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 
 import httpx
 
@@ -1269,6 +1271,10 @@ async def predict_kerala_flood(payload: KeralaPredictionRequest):
     raw_factors = live_data.get("top_factors", [])
     advanced_factors = [PS71_TERMINOLOGY_MAP.get(factor, factor) for factor in raw_factors]
 
+    # Calculate impassable roads based on current depth
+    depth_cm = live_data.get("estimated_depth_cm", 0.0)
+    blocked_roads = get_flooded_roads(payload.district, depth_cm)
+
     return {
         "status": "success",
         "district": payload.district,
@@ -1280,7 +1286,8 @@ async def predict_kerala_flood(payload: KeralaPredictionRequest):
         "is_high_risk": live_data.get("is_high_risk", False),
         "top_factors": advanced_factors,
         "telemetry_pillars": live_data.get("pillars", {}),
-        "estimated_depth_cm": live_data.get("estimated_depth_cm", 0.0),
+        "estimated_depth_cm": depth_cm,
+        "road_hazards": blocked_roads,
     }
 
 @app.post("/api/volunteers/tasks/{task_id}/accept", tags=["Volunteers"])
@@ -1334,4 +1341,95 @@ async def get_volunteer_location(
         "volunteer_name": volunteer.User.full_name,
         "latitude": volunteer.lat,
         "longitude": volunteer.lng
+    }
+
+
+from app.ml_engine.road_hazards import get_flooded_roads
+
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+
+@app.get("/api/v1/map-overlay", tags=["PRAVAH2 Inundation"])
+async def serve_map_overlay():
+    """
+    Serves the pre-rendered 90m HAND inundation raster map directly from disk.
+    """
+    image_path = os.path.join(DATA_DIR, "inundation_depth_overlay.png")
+    if not os.path.exists(image_path):
+        raise HTTPException(status_code=404, detail="Static map overlay PNG not found in app/data/")
+        
+    return FileResponse(image_path, media_type="image/png")
+
+
+@app.get("/api/v1/map-bounds", tags=["PRAVAH2 Inundation"])
+async def serve_map_bounds():
+    """
+    Serves GPS bounding coordinates for Leaflet/Mapbox image overlays.
+    """
+    bounds_path = os.path.join(DATA_DIR, "inundation_depth_overlay.json")
+    if not os.path.exists(bounds_path):
+        raise HTTPException(status_code=404, detail="Map bounds JSON not found in app/data/")
+    
+    with open(bounds_path, "r") as f:
+        return json.load(f)
+
+
+@app.get("/api/v1/shap-drivers/{district_name}", tags=["PRAVAH2 Inundation"])
+async def get_district_shap_drivers(district_name: str):
+    """
+    Returns precomputed SHAP local explanations for the specified district.
+    """
+    clean_district = district_name.strip("\"' ").lower()
+
+    shap_path = os.path.join(DATA_DIR, "district_explanations_latest.json")
+    if not os.path.exists(shap_path):
+        raise HTTPException(status_code=404, detail="SHAP explanations JSON not found in app/data/")
+        
+    with open(shap_path, "r") as f:
+        shap_data = json.load(f)
+
+    district_drivers = None
+
+    # Handle when JSON is a list of district objects: [{ "district": "Idukki", ... }]
+    if isinstance(shap_data, list):
+        for item in shap_data:
+            if isinstance(item, dict):
+                name = item.get("district") or item.get("district_name") or item.get("name")
+                if name and str(name).strip().lower() == clean_district:
+                    district_drivers = item
+                    break
+            elif isinstance(item, str) and item.strip().lower() == clean_district:
+                district_drivers = item
+                break
+    # Handle when JSON is a dictionary keyed by district name: { "Idukki": { ... } }
+    elif isinstance(shap_data, dict):
+        for key, val in shap_data.items():
+            if str(key).strip().lower() == clean_district:
+                district_drivers = val
+                break
+
+    if not district_drivers:
+        raise HTTPException(status_code=404, detail=f"No SHAP explanation found for district: {district_name}")
+        
+    return {
+        "district": district_name.strip("\"' "),
+        "primary_drivers": district_drivers
+    }
+
+
+@app.get("/api/v1/roads/hazards/{district_name}", tags=["PRAVAH2 Inundation"])
+async def get_district_road_hazards(district_name: str):
+    """
+    Returns major highways and primary roads in the district exceeding the 20cm flood threshold.
+    """
+    live_district = kerala_live_cache["districts"].get(district_name)
+    depth_cm = live_district.get("estimated_depth_cm", 0.0) if live_district else 25.0
+    
+    blocked_roads = get_flooded_roads(district_name=district_name, estimated_depth_cm=depth_cm)
+    
+    return {
+        "district": district_name,
+        "estimated_depth_cm": depth_cm,
+        "road_closure_threshold_cm": 20.0,
+        "impassable_roads": blocked_roads,
+        "count": len(blocked_roads)
     }

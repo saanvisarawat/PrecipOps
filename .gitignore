@@ -1,3 +1,10 @@
 .env
 venv/
 __pycache__/
+kerala_roads/
+*.shp
+*.shx
+*.dbf
+*.cpg
+*.prj
+app/data/kerala_roads_major.geojson

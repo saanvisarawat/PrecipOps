@@ -1,0 +1,221 @@
+{
+  "image": "inundation_depth_overlay.png",
+  "bounds_lat_lon": [
+    [
+      8.292300956449608,
+      74.86825086165169
+    ],
+    [
+      12.794733578071828,
+      77.41201002267142
+    ]
+  ],
+  "width_px": 3137,
+  "height_px": 5552,
+  "as_of_date": "2026-09-23",
+  "min_depth_cm_shown": 10.0,
+  "rows_aligned_to": "web_mercator",
+  "impassable_depth_cm": 20.0,
+  "legend": [
+    {
+      "label": "under 10 cm",
+      "rgb": [
+        191,
+        219,
+        254
+      ],
+      "min_cm": 0,
+      "max_cm": 10
+    },
+    {
+      "label": "10 - 20 cm",
+      "rgb": [
+        253,
+        224,
+        71
+      ],
+      "min_cm": 10,
+      "max_cm": 20
+    },
+    {
+      "label": "20 - 50 cm",
+      "rgb": [
+        251,
+        146,
+        60
+      ],
+      "min_cm": 20,
+      "max_cm": 50
+    },
+    {
+      "label": "50 - 100 cm",
+      "rgb": [
+        220,
+        38,
+        38
+      ],
+      "min_cm": 50,
+      "max_cm": 100
+    },
+    {
+      "label": "over 100 cm",
+      "rgb": [
+        127,
+        29,
+        29
+      ],
+      "min_cm": 100,
+      "max_cm": null
+    }
+  ],
+  "note": "Depth is a terrain-based proxy for relative severity, not a calibrated measurement.",
+  "districts": [
+    {
+      "district": "Kottayam",
+      "predicted_risk_category": "Moderate",
+      "severe_probability": 0.013100000098347664,
+      "as_of_date": "2026-09-23",
+      "cells_total": 276730,
+      "cells_kept": 60393,
+      "median_depth_cm": 41.6,
+      "max_depth_cm": 41.6
+    },
+    {
+      "district": "Thiruvananthapuram",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.027499999850988388,
+      "as_of_date": "2026-09-23",
+      "cells_total": 272175,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Pathanamthitta",
+      "predicted_risk_category": "Moderate",
+      "severe_probability": 0.08079999685287476,
+      "as_of_date": "2026-09-23",
+      "cells_total": 331528,
+      "cells_kept": 37370,
+      "median_depth_cm": 41.6,
+      "max_depth_cm": 41.6
+    },
+    {
+      "district": "Palakkad",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.007000000216066837,
+      "as_of_date": "2026-09-23",
+      "cells_total": 563368,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Malappuram",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.008100000210106373,
+      "as_of_date": "2026-09-23",
+      "cells_total": 443520,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Kozhikode",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.007199999876320362,
+      "as_of_date": "2026-09-23",
+      "cells_total": 294070,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Kollam",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.012900000438094139,
+      "as_of_date": "2026-09-23",
+      "cells_total": 311815,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Kasaragod",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.004000000189989805,
+      "as_of_date": "2026-09-23",
+      "cells_total": 247685,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Kannur",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.0027000000700354576,
+      "as_of_date": "2026-09-23",
+      "cells_total": 373320,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Idukki",
+      "predicted_risk_category": "Moderate",
+      "severe_probability": 0.08219999819993973,
+      "as_of_date": "2026-09-23",
+      "cells_total": 546938,
+      "cells_kept": 34899,
+      "median_depth_cm": 41.6,
+      "max_depth_cm": 41.6
+    },
+    {
+      "district": "Ernakulam",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.007899999618530273,
+      "as_of_date": "2026-09-23",
+      "cells_total": 383223,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Alappuzha",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.010700000450015068,
+      "as_of_date": "2026-09-23",
+      "cells_total": 174870,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Thrissur",
+      "predicted_risk_category": "Light",
+      "severe_probability": 0.010200000368058681,
+      "as_of_date": "2026-09-23",
+      "cells_total": 378379,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    },
+    {
+      "district": "Wayanad",
+      "predicted_risk_category": "No Rain",
+      "severe_probability": 0.004000000189989805,
+      "as_of_date": "2026-09-23",
+      "cells_total": 270377,
+      "cells_kept": 0,
+      "median_depth_cm": null,
+      "max_depth_cm": null
+    }
+  ],
+  "depth_mode": "class_argmax",
+  "flood_categories": [
+    "Moderate",
+    "Severe"
+  ],
+  "include_light": false,
+  "terrain_formula": "exponential decay fitted to Sentinel-1 flood maps (2018, 2019): HAND scale 1.6 m, river distance not used (it adds no signal beyond HAND)"
+}

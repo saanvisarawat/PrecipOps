@@ -1,0 +1,127 @@
+{
+  "created": "2026-09-28T18:37:22+00:00",
+  "events": [
+    "2018",
+    "2019"
+  ],
+  "valid": true,
+  "river_used": false,
+  "river_decision": "with HAND already in the model, the fitted river-distance slope was not negative on at least one flood",
+  "h_cap_m": 10.0,
+  "r_cap_m": 3000.0,
+  "pooled_fit": {
+    "ok": true,
+    "river_used": false,
+    "n": 3577976,
+    "n_pos": 82294,
+    "groups": 26,
+    "iterations": 7,
+    "converged": true,
+    "beta_hand_per_m": -0.6123,
+    "beta_river_per_km": null,
+    "L_hand_m": 1.6332,
+    "L_river_m": null,
+    "loglik": -270421.0826
+  },
+  "held_out_tests": [
+    {
+      "fit_on": "2018",
+      "scored_on": "2018",
+      "held_out": false,
+      "original": 0.8030606525978367,
+      "hand_only": 0.8291799131799329,
+      "hand_and_river": null
+    },
+    {
+      "fit_on": "2018",
+      "scored_on": "2019",
+      "held_out": true,
+      "original": 0.8326092563038616,
+      "hand_only": 0.8526346009580538,
+      "hand_and_river": null
+    },
+    {
+      "fit_on": "2019",
+      "scored_on": "2018",
+      "held_out": true,
+      "original": 0.8030606525978367,
+      "hand_only": 0.8291938453139839,
+      "hand_and_river": null
+    },
+    {
+      "fit_on": "2019",
+      "scored_on": "2019",
+      "held_out": false,
+      "original": 0.8326092563038616,
+      "hand_only": 0.8526332716883922,
+      "hand_and_river": null
+    }
+  ],
+  "single_event_fits": {
+    "2018": {
+      "hand_only": {
+        "ok": true,
+        "river_used": false,
+        "n": 2020986,
+        "n_pos": 42334,
+        "groups": 14,
+        "iterations": 7,
+        "converged": true,
+        "beta_hand_per_m": -0.6245,
+        "beta_river_per_km": null,
+        "L_hand_m": 1.6012,
+        "L_river_m": null,
+        "loglik": -134146.4932
+      },
+      "hand_and_river": {
+        "ok": true,
+        "river_used": true,
+        "n": 2020986,
+        "n_pos": 42334,
+        "groups": 14,
+        "iterations": 7,
+        "converged": true,
+        "beta_hand_per_m": -0.6441,
+        "beta_river_per_km": 0.1801,
+        "L_hand_m": 1.5527,
+        "L_river_m": null,
+        "loglik": -134026.8564
+      }
+    },
+    "2019": {
+      "hand_only": {
+        "ok": true,
+        "river_used": false,
+        "n": 1556990,
+        "n_pos": 39960,
+        "groups": 12,
+        "iterations": 7,
+        "converged": true,
+        "beta_hand_per_m": -0.6013,
+        "beta_river_per_km": null,
+        "L_hand_m": 1.6629,
+        "L_river_m": null,
+        "loglik": -136266.7053
+      },
+      "hand_and_river": {
+        "ok": true,
+        "river_used": true,
+        "n": 1556990,
+        "n_pos": 39960,
+        "groups": 12,
+        "iterations": 7,
+        "converged": true,
+        "beta_hand_per_m": -0.6136,
+        "beta_river_per_km": 0.1328,
+        "L_hand_m": 1.6298,
+        "L_river_m": null,
+        "loglik": -136211.8442
+      }
+    }
+  },
+  "L_hand_m": 1.6332155401603072,
+  "L_river_m": null,
+  "notes": [],
+  "held_out_within_district_auc_min": 0.8292,
+  "held_out_gain_over_original_min": 0.02
+}

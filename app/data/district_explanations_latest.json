@@ -1,0 +1,464 @@
+[
+  {
+    "district": "Kottayam",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Moderate",
+    "base_value": 0.0617,
+    "top_features": [
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": -0.1177
+      },
+      {
+        "feature": "season_sin",
+        "label": "seasonal cycle position (sin)",
+        "contribution": 0.1122
+      },
+      {
+        "feature": "nwp_temperature_2m_max",
+        "label": "forecast max temperature",
+        "contribution": 0.1097
+      },
+      {
+        "feature": "historical_flood_count",
+        "label": "historical flood count, this district",
+        "contribution": 0.0648
+      },
+      {
+        "feature": "om_river_discharge",
+        "label": "today's river discharge",
+        "contribution": 0.0582
+      }
+    ]
+  },
+  {
+    "district": "Thiruvananthapuram",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.475
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2862
+      },
+      {
+        "feature": "om_rainfall_mm",
+        "label": "today's rainfall",
+        "contribution": 0.1846
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.1782
+      },
+      {
+        "feature": "om_rainfall_mm_3d_sum",
+        "label": "3-day rainfall total",
+        "contribution": 0.1741
+      }
+    ]
+  },
+  {
+    "district": "Pathanamthitta",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Moderate",
+    "base_value": 0.0617,
+    "top_features": [
+      {
+        "feature": "season_sin",
+        "label": "seasonal cycle position (sin)",
+        "contribution": 0.1282
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": -0.0812
+      },
+      {
+        "feature": "om_river_discharge",
+        "label": "today's river discharge",
+        "contribution": 0.0801
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.0715
+      },
+      {
+        "feature": "om_river_discharge_7d_sum",
+        "label": "7-day river discharge total",
+        "contribution": 0.069
+      }
+    ]
+  },
+  {
+    "district": "Palakkad",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.4241
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.272
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.2191
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.1906
+      },
+      {
+        "feature": "om_rainfall_mm",
+        "label": "today's rainfall",
+        "contribution": 0.1647
+      }
+    ]
+  },
+  {
+    "district": "Malappuram",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.4402
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2861
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.1989
+      },
+      {
+        "feature": "om_rainfall_mm_3d_sum",
+        "label": "3-day rainfall total",
+        "contribution": 0.1686
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.1485
+      }
+    ]
+  },
+  {
+    "district": "Kozhikode",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.4078
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2534
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.2031
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.147
+      },
+      {
+        "feature": "om_rainfall_mm_7d_sum",
+        "label": "7-day rainfall total",
+        "contribution": 0.1364
+      }
+    ]
+  },
+  {
+    "district": "Kollam",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.4792
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2722
+      },
+      {
+        "feature": "om_rainfall_mm_3d_sum",
+        "label": "3-day rainfall total",
+        "contribution": 0.1979
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.1664
+      },
+      {
+        "feature": "om_rainfall_mm",
+        "label": "today's rainfall",
+        "contribution": 0.1405
+      }
+    ]
+  },
+  {
+    "district": "Kasaragod",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.4245
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2637
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.1955
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.1924
+      },
+      {
+        "feature": "om_rainfall_mm",
+        "label": "today's rainfall",
+        "contribution": 0.1394
+      }
+    ]
+  },
+  {
+    "district": "Kannur",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.4039
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2294
+      },
+      {
+        "feature": "om_rainfall_mm_3d_sum",
+        "label": "3-day rainfall total",
+        "contribution": 0.1736
+      },
+      {
+        "feature": "om_rainfall_mm_7d_sum",
+        "label": "7-day rainfall total",
+        "contribution": 0.1335
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.1284
+      }
+    ]
+  },
+  {
+    "district": "Idukki",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Moderate",
+    "base_value": 0.0617,
+    "top_features": [
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.1402
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.1293
+      },
+      {
+        "feature": "historical_flood_count",
+        "label": "historical flood count, this district",
+        "contribution": 0.125
+      },
+      {
+        "feature": "season_sin",
+        "label": "seasonal cycle position (sin)",
+        "contribution": 0.1187
+      },
+      {
+        "feature": "om_rainfall_mm_3d_sum",
+        "label": "3-day rainfall total",
+        "contribution": 0.1109
+      }
+    ]
+  },
+  {
+    "district": "Ernakulam",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.5173
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2859
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.1926
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.1785
+      },
+      {
+        "feature": "season_sin",
+        "label": "seasonal cycle position (sin)",
+        "contribution": 0.1372
+      }
+    ]
+  },
+  {
+    "district": "Alappuzha",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.5548
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2613
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.1822
+      },
+      {
+        "feature": "season_sin",
+        "label": "seasonal cycle position (sin)",
+        "contribution": 0.1481
+      },
+      {
+        "feature": "om_rainfall_mm",
+        "label": "today's rainfall",
+        "contribution": 0.1429
+      }
+    ]
+  },
+  {
+    "district": "Thrissur",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "Light",
+    "base_value": 0.0476,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -0.6069
+      },
+      {
+        "feature": "aws_rainfall_mm",
+        "label": "ground station rainfall (AWS)",
+        "contribution": 0.2917
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.2113
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.1541
+      },
+      {
+        "feature": "om_rainfall_mm",
+        "label": "today's rainfall",
+        "contribution": 0.1134
+      }
+    ]
+  },
+  {
+    "district": "Wayanad",
+    "date": "2026-09-23 00:00:00",
+    "predicted_category": "No Rain",
+    "base_value": -0.2409,
+    "top_features": [
+      {
+        "feature": "sat_precipitation_mm",
+        "label": "satellite-estimated rainfall",
+        "contribution": -1.1279
+      },
+      {
+        "feature": "consensus_rainfall_mm",
+        "label": "cross-source consensus rainfall",
+        "contribution": 0.5865
+      },
+      {
+        "feature": "om_rainfall_mm",
+        "label": "today's rainfall",
+        "contribution": 0.4512
+      },
+      {
+        "feature": "nwp_precipitation_sum",
+        "label": "forecast precipitation (NWP)",
+        "contribution": 0.3567
+      },
+      {
+        "feature": "om_rainfall_mm_15d_sum",
+        "label": "15-day rainfall total",
+        "contribution": 0.2941
+      }
+    ]
+  }
+]

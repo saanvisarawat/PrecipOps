@@ -1,0 +1,142 @@
+[
+  {
+    "feature": "sat_precipitation_mm",
+    "label": "satellite-estimated rainfall",
+    "mean_abs_shap": 0.38296
+  },
+  {
+    "feature": "om_rainfall_mm",
+    "label": "today's rainfall",
+    "mean_abs_shap": 0.31634
+  },
+  {
+    "feature": "consensus_rainfall_mm",
+    "label": "cross-source consensus rainfall",
+    "mean_abs_shap": 0.29967
+  },
+  {
+    "feature": "om_rainfall_mm_3d_sum",
+    "label": "3-day rainfall total",
+    "mean_abs_shap": 0.15916
+  },
+  {
+    "feature": "nwp_precipitation_sum",
+    "label": "forecast precipitation (NWP)",
+    "mean_abs_shap": 0.1577
+  },
+  {
+    "feature": "season_cos",
+    "label": "seasonal cycle position (cos)",
+    "mean_abs_shap": 0.13526
+  },
+  {
+    "feature": "om_rainfall_mm_7d_sum",
+    "label": "7-day rainfall total",
+    "mean_abs_shap": 0.1256
+  },
+  {
+    "feature": "om_rainfall_mm_15d_sum",
+    "label": "15-day rainfall total",
+    "mean_abs_shap": 0.12172
+  },
+  {
+    "feature": "nwp_relative_humidity_2m_mean",
+    "label": "forecast humidity",
+    "mean_abs_shap": 0.08938
+  },
+  {
+    "feature": "season_sin",
+    "label": "seasonal cycle position (sin)",
+    "mean_abs_shap": 0.08146
+  },
+  {
+    "feature": "historical_flood_count",
+    "label": "historical flood count, this district",
+    "mean_abs_shap": 0.07938
+  },
+  {
+    "feature": "om_river_discharge",
+    "label": "today's river discharge",
+    "mean_abs_shap": 0.07776
+  },
+  {
+    "feature": "aws_rainfall_mm",
+    "label": "ground station rainfall (AWS)",
+    "mean_abs_shap": 0.07743
+  },
+  {
+    "feature": "nwp_temperature_2m_max",
+    "label": "forecast max temperature",
+    "mean_abs_shap": 0.06473
+  },
+  {
+    "feature": "nwp_wind_speed_10m_max",
+    "label": "forecast max wind speed",
+    "mean_abs_shap": 0.0565
+  },
+  {
+    "feature": "srtm_slope_deg",
+    "label": "terrain slope",
+    "mean_abs_shap": 0.04612
+  },
+  {
+    "feature": "nwp_temperature_2m_min",
+    "label": "forecast min temperature",
+    "mean_abs_shap": 0.04173
+  },
+  {
+    "feature": "om_river_discharge_3d_sum",
+    "label": "3-day river discharge total",
+    "mean_abs_shap": 0.03263
+  },
+  {
+    "feature": "srtm_elevation_m",
+    "label": "elevation",
+    "mean_abs_shap": 0.02843
+  },
+  {
+    "feature": "om_river_discharge_7d_sum",
+    "label": "7-day river discharge total",
+    "mean_abs_shap": 0.02648
+  },
+  {
+    "feature": "om_river_discharge_15d_sum",
+    "label": "15-day river discharge total",
+    "mean_abs_shap": 0.02272
+  },
+  {
+    "feature": "is_monsoon_season",
+    "label": "monsoon season flag",
+    "mean_abs_shap": 0.01802
+  },
+  {
+    "feature": "consensus_rainfall_sources",
+    "label": "number of rainfall sources agreeing",
+    "mean_abs_shap": 0.0054
+  },
+  {
+    "feature": "nwp_observed",
+    "label": "NWP forecast available today",
+    "mean_abs_shap": 0.00101
+  },
+  {
+    "feature": "aws_observed",
+    "label": "AWS station reporting today",
+    "mean_abs_shap": 0.0
+  },
+  {
+    "feature": "rad_dbz",
+    "label": "radar reflectivity",
+    "mean_abs_shap": 0.0
+  },
+  {
+    "feature": "sat_observed",
+    "label": "satellite data available today",
+    "mean_abs_shap": 0.0
+  },
+  {
+    "feature": "rad_rainfall_rate_mm_hr",
+    "label": "radar-derived rain rate",
+    "mean_abs_shap": 0.0
+  }
+]
