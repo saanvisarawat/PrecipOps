@@ -660,6 +660,18 @@ class DioPreciopsApi implements PreciopsApi {
   }
 
   @override
+  Future<MapOverlayBounds> getMapOverlayBounds() async {
+    final res = await _dio.get('/api/v1/map-bounds');
+    return MapOverlayBounds.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<ShapDriversResponse> getShapDrivers(String district) async {
+    final res = await _dio.get('/api/v1/shap-drivers/${Uri.encodeComponent(district)}');
+    return ShapDriversResponse.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  @override
   Future<BlockedNodesResponse> getBlockedNodes({required String zoneId}) async {
     final res = await _dio.get('/api/v1/routing/blocked-nodes', queryParameters: {'zone_id': zoneId});
     return BlockedNodesResponse.fromJson(res.data as Map<String, dynamic>);

@@ -119,6 +119,11 @@ abstract class PreciopsApi {
     required String district,
   });
 
+  // 21. PRAVAH2 — raster flood overlay bounds (GET /api/v1/map-bounds) and
+  // local SHAP explainability (GET /api/v1/shap-drivers/{district}).
+  Future<MapOverlayBounds> getMapOverlayBounds();
+  Future<ShapDriversResponse> getShapDrivers(String district);
+
   // 15. Evacuation routing — blocked street bounding boxes for a given
   // inundation zone (GET /api/v1/routing/blocked-nodes). Feeds the offline
   // Dijkstra router used by both the Responder and Citizen dashboards.

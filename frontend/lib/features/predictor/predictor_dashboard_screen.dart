@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:dio/dio.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,11 +12,13 @@ import 'package:latlong2/latlong.dart';
 import '../../api/models/dashboard_event_models.dart';
 import '../../api/models/inundation_models.dart';
 import '../../api/models/kerala_telemetry_models.dart';
+import '../../core/config/env.dart';
 import '../../core/constants/kerala_districts.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/risk_scenario.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../providers/api_base_url_provider.dart';
 import '../../providers/api_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/stream_providers.dart';
@@ -57,10 +60,21 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
 
   bool _broadcasting = false;
 
+  MapOverlayBounds? _overlayBounds;
+  ShapDriversResponse? _shap;
+  bool _shapLoading = false;
+  String? _shapError;
+
+  String get _apiBase {
+    final o = ref.read(apiBaseUrlOverrideProvider);
+    return (o != null && o.isNotEmpty) ? o : Env.apiBaseUrl;
+  }
+
   @override
   void initState() {
     super.initState();
     _onDistrictChanged(_district);
+    _loadOverlayBounds();
   }
 
   @override
@@ -82,6 +96,7 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
   /// scenario choice.
   Future<void> _onDistrictChanged(String district) async {
     setState(() => _district = district);
+    _loadShap();
     await _loadKerala();
     if (mounted) {
       if (_keralaData != null) {
@@ -91,6 +106,38 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
       }
     }
     _load();
+  }
+
+  Future<void> _loadOverlayBounds() async {
+    try {
+      final b = await ref.read(preciopsApiProvider).getMapOverlayBounds();
+      if (mounted) setState(() => _overlayBounds = b);
+    } catch (_) {
+      // Overlay is optional; the map still renders without it.
+    }
+  }
+
+  Future<void> _loadShap() async {
+    final district = _district;
+    setState(() {
+      _shapLoading = true;
+      _shapError = null;
+    });
+    try {
+      final r = await ref.read(preciopsApiProvider).getShapDrivers(district);
+      if (!mounted || district != _district) return;
+      setState(() {
+        _shap = r;
+        _shapLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || district != _district) return;
+      setState(() {
+        _shap = null;
+        _shapError = 'No SHAP explanation available for $district.';
+        _shapLoading = false;
+      });
+    }
   }
 
   Future<void> _loadKerala() async {
@@ -316,6 +363,12 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
                             child: Text(_keralaError!, style: AppTypography.body(color: AppColors.textSecondary)),
                           )
                         else if (_keralaData != null) ...[
+                          if (_keralaData!.roadHazards.isNotEmpty) ...[
+                            _RoadHazardBanner(roads: _keralaData!.roadHazards),
+                            const SizedBox(height: AppSpacing.sm),
+                          ],
+                          _RiskScoreCard(data: _keralaData!),
+                          const SizedBox(height: AppSpacing.sm),
                           _FourPillarHud(pillars: _keralaData!.telemetryPillars),
                           const SizedBox(height: AppSpacing.sm),
                           _TopFactorsChips(factors: _keralaData!.topFactors, riskLevel: _keralaData!.riskLevel),
@@ -331,6 +384,11 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
                         _InundationMap(
                           frame: _data!.simulationFrames.isNotEmpty ? _data!.simulationFrames[_frameIndex] : null,
                           district: _district,
+                          overlayBounds: _overlayBounds,
+                          overlayUrl: '$_apiBase/api/v1/map-overlay',
+                          onDistrictTap: (d) {
+                            if (d != _district) _onDistrictChanged(d);
+                          },
                         ),
                         const SizedBox(height: AppSpacing.md),
                         _TimeLapseControls(
@@ -340,6 +398,8 @@ class _PredictorDashboardScreenState extends ConsumerState<PredictorDashboardScr
                           onScrub: (i) => setState(() => _frameIndex = i),
                           onPlayPause: _togglePlay,
                         ),
+                        const SectionHeader(title: 'Why this risk? (SHAP drivers)'),
+                        _ShapChartCard(data: _shap, loading: _shapLoading, error: _shapError),
                         const SectionHeader(title: 'IMD Advisory'),
                         _AdvisoryPanel(data: _data!),
                         const SizedBox(height: AppSpacing.section),
@@ -447,9 +507,11 @@ class _FourPillarHud extends StatelessWidget {
       StatCard(
         label: 'Satellite (INSAT-3DR)',
         value: '${satellite.cloudTopTempC.toStringAsFixed(1)}°C',
-        trend: 'Cloud cover ${satellite.cloudCoverPct.toStringAsFixed(0)}%',
-        icon: Icons.satellite_alt_outlined,
-        accent: AppColors.info,
+        trend: satellite.convectiveCloudburstDetected
+            ? 'Cloudburst detected · cover ${satellite.cloudCoverPct.toStringAsFixed(0)}%'
+            : 'Cloud cover ${satellite.cloudCoverPct.toStringAsFixed(0)}%',
+        icon: satellite.convectiveCloudburstDetected ? Icons.warning_amber_rounded : Icons.satellite_alt_outlined,
+        accent: satellite.convectiveCloudburstDetected ? AppColors.dangerStrong : AppColors.info,
       ),
       StatCard(
         label: 'Doppler Radar (DWR)',
@@ -535,7 +597,16 @@ LatLng _landmarkPoint(String name, List<LatLng> ring) {
 class _InundationMap extends StatelessWidget {
   final InundationFrame? frame;
   final String district;
-  const _InundationMap({required this.frame, required this.district});
+  final MapOverlayBounds? overlayBounds;
+  final String overlayUrl;
+  final ValueChanged<String> onDistrictTap;
+  const _InundationMap({
+    required this.frame,
+    required this.district,
+    required this.overlayBounds,
+    required this.overlayUrl,
+    required this.onDistrictTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -550,12 +621,29 @@ class _InundationMap extends StatelessWidget {
         child: Stack(
           children: [
             FlutterMap(
-              options: MapOptions(initialCenter: dist.center, initialZoom: 13, minZoom: 4, maxZoom: 17),
+              options: MapOptions(
+                initialCenter: dist.center,
+                initialZoom: 13,
+                minZoom: 4,
+                maxZoom: 17,
+                onTap: (_, point) => onDistrictTap(KeralaDistricts.nearest(point.latitude, point.longitude).name),
+              ),
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.floodops.preciops_frontend',
                 ),
+                if (overlayBounds != null)
+                  OverlayImageLayer(overlayImages: [
+                    OverlayImage(
+                      bounds: LatLngBounds(
+                        LatLng(overlayBounds!.south, overlayBounds!.west),
+                        LatLng(overlayBounds!.north, overlayBounds!.east),
+                      ),
+                      opacity: 0.7,
+                      imageProvider: NetworkImage(overlayUrl),
+                    ),
+                  ]),
                 if (ring.length >= 3)
                   PolygonLayer(polygons: [
                     Polygon(
@@ -722,6 +810,155 @@ class _AdvisoryPanel extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(data.advisoryBulletin, style: AppTypography.body(color: AppColors.textSecondary)),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// Headline card: flood_risk_score with a badge coloured by risk_level.
+class _RiskScoreCard extends StatelessWidget {
+  final KeralaPredictionResponse data;
+  const _RiskScoreCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = data.riskLevel == 'CRITICAL'
+        ? Colors.red
+        : data.riskLevel == 'WARNING'
+            ? Colors.orange
+            : data.riskLevel == 'ADVISORY'
+                ? Colors.amber
+                : Colors.green;
+    return AppCard(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Flood risk score · ${data.district}', style: AppTypography.label()),
+                const SizedBox(height: 4),
+                Text('${data.floodRiskScore} / 100',
+                    style: AppTypography.body(color: color).copyWith(fontSize: 28, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+          StatusBadge(label: data.riskLevel, color: color, icon: Icons.shield_outlined, filled: true),
+        ],
+      ),
+    );
+  }
+}
+
+/// Persistent red banner listing highways expected to exceed the 20 cm
+/// vehicle-stall depth (`road_hazards` from POST /api/ml/predict-kerala).
+class _RoadHazardBanner extends StatelessWidget {
+  final List<String> roads;
+  const _RoadHazardBanner({required this.roads});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.red),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Impassable roads (flood depth > 20 cm)',
+                    style: AppTypography.label(color: Colors.red).copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(roads.join(' · '), style: AppTypography.body(color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Local SHAP explainability: one horizontal bar per driver, length =
+/// contribution (red pushes risk up, green pulls it down).
+class _ShapChartCard extends StatelessWidget {
+  final ShapDriversResponse? data;
+  final bool loading;
+  final String? error;
+  const _ShapChartCard({required this.data, required this.loading, required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && data == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: Center(child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2.4)),
+      );
+    }
+    final drivers = data?.drivers ?? const <ShapDriver>[];
+    if (drivers.isEmpty) {
+      return Text(error ?? 'No SHAP data.', style: AppTypography.body(color: AppColors.textSecondary));
+    }
+    final maxAbs = drivers.map((d) => d.contribution.abs()).reduce((a, b) => a > b ? a : b);
+    final bound = maxAbs == 0 ? 1.0 : maxAbs * 1.15;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (data?.predictedCategory != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('Predicted: ${data!.predictedCategory}', style: AppTypography.label()),
+            ),
+          for (final d in drivers) ...[
+            Row(
+              children: [
+                Expanded(child: Text(d.label, style: AppTypography.caption())),
+                Text('${d.contribution >= 0 ? '+' : ''}${d.contribution.toStringAsFixed(3)}',
+                    style: AppTypography.caption()),
+              ],
+            ),
+            const SizedBox(height: 2),
+            SizedBox(
+              height: 22,
+              child: RotatedBox(
+                quarterTurns: 1,
+                child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.center,
+                  minY: -bound,
+                  maxY: bound,
+                  gridData: const FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                  titlesData: const FlTitlesData(show: false),
+                  barTouchData: BarTouchData(enabled: false),
+                  barGroups: [
+                    BarChartGroupData(x: 0, barRods: [
+                      BarChartRodData(
+                        toY: d.contribution,
+                        width: 14,
+                        color: d.contribution >= 0 ? Colors.red : Colors.green,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ]),
+                  ],
+                ),
+              ),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
         ],
       ),
     );

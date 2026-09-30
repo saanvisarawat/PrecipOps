@@ -936,6 +936,8 @@ class MockPreciopsApi implements PreciopsApi {
       riskProbability: (riskScore / 100.0),
       riskLevel: riskScore >= 75 ? 'CRITICAL' : riskScore >= 39 ? 'WARNING' : riskScore >= 15 ? 'ADVISORY' : 'NORMAL',
       isHighRisk: riskScore >= 75,
+      estimatedDepthCm: riskScore >= 39 ? riskScore * 0.6 : 0,
+      roadHazards: riskScore >= 39 ? const ['NH 66', 'MC Road'] : const [],
       topFactors: riskScore >= 39
           ? const ['Observational AWS Data (Ground)', 'NWP Precipitation Forecast']
           : const ['INSAT-3DR Topography (Satellite)', 'Doppler Weather Radar (Streamflow)'],
@@ -963,6 +965,24 @@ class MockPreciopsApi implements PreciopsApi {
         ),
       ),
     );
+  }
+
+  @override
+  Future<MapOverlayBounds> getMapOverlayBounds() async {
+    await _delay(150, 300);
+    return const MapOverlayBounds(south: 8.2923, west: 74.8683, north: 12.7947, east: 77.4120);
+  }
+
+  @override
+  Future<ShapDriversResponse> getShapDrivers(String district) async {
+    await _delay(200, 400);
+    return ShapDriversResponse(district: district, predictedCategory: 'Moderate', drivers: const [
+      ShapDriver(feature: 'om_rainfall_mm', label: "today's rainfall", contribution: 0.21),
+      ShapDriver(feature: 'om_river_discharge', label: "today's river discharge", contribution: 0.12),
+      ShapDriver(feature: 'historical_flood_count', label: 'historical flood count, this district', contribution: 0.06),
+      ShapDriver(feature: 'aws_rainfall_mm', label: 'ground station rainfall (AWS)', contribution: -0.09),
+      ShapDriver(feature: 'sat_precipitation_mm', label: 'satellite-estimated rainfall', contribution: -0.14),
+    ]);
   }
 
   @override

@@ -105,6 +105,7 @@ class KeralaPredictionResponse {
   final bool isHighRisk;
   final List<String> topFactors;
   final double estimatedDepthCm;
+  final List<String> roadHazards;
   final KeralaTelemetryPillars telemetryPillars;
 
   const KeralaPredictionResponse({
@@ -117,6 +118,7 @@ class KeralaPredictionResponse {
     required this.isHighRisk,
     required this.topFactors,
     this.estimatedDepthCm = 0,
+    this.roadHazards = const [],
     required this.telemetryPillars,
   });
 
@@ -130,7 +132,77 @@ class KeralaPredictionResponse {
         isHighRisk: json['is_high_risk'] as bool? ?? false,
         topFactors: (json['top_factors'] as List?)?.map((e) => e.toString()).toList() ?? const [],
         estimatedDepthCm: (json['estimated_depth_cm'] as num?)?.toDouble() ?? 0,
+        roadHazards: (json['road_hazards'] as List?)?.map((e) => e.toString()).toList() ?? const [],
         telemetryPillars:
             KeralaTelemetryPillars.fromJson((json['telemetry_pillars'] as Map<String, dynamic>?) ?? const {}),
       );
+}
+
+/// GET /api/v1/map-bounds — GPS corners of the pre-rendered HAND inundation
+/// raster served at GET /api/v1/map-overlay.
+class MapOverlayBounds {
+  final double south;
+  final double west;
+  final double north;
+  final double east;
+  final String? asOfDate;
+  final double impassableDepthCm;
+
+  const MapOverlayBounds({
+    required this.south,
+    required this.west,
+    required this.north,
+    required this.east,
+    this.asOfDate,
+    this.impassableDepthCm = 20,
+  });
+
+  factory MapOverlayBounds.fromJson(Map<String, dynamic> json) {
+    final b = json['bounds_lat_lon'] as List;
+    final sw = b[0] as List;
+    final ne = b[1] as List;
+    return MapOverlayBounds(
+      south: (sw[0] as num).toDouble(),
+      west: (sw[1] as num).toDouble(),
+      north: (ne[0] as num).toDouble(),
+      east: (ne[1] as num).toDouble(),
+      asOfDate: json['as_of_date'] as String?,
+      impassableDepthCm: (json['impassable_depth_cm'] as num?)?.toDouble() ?? 20,
+    );
+  }
+}
+
+class ShapDriver {
+  final String feature;
+  final String label;
+  final double contribution;
+
+  const ShapDriver({required this.feature, required this.label, required this.contribution});
+
+  factory ShapDriver.fromJson(Map<String, dynamic> json) => ShapDriver(
+        feature: json['feature'] as String? ?? '',
+        label: json['label'] as String? ?? (json['feature'] as String? ?? ''),
+        contribution: (json['contribution'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+/// GET /api/v1/shap-drivers/{district} — local SHAP explanation.
+class ShapDriversResponse {
+  final String district;
+  final String? predictedCategory;
+  final List<ShapDriver> drivers;
+
+  const ShapDriversResponse({required this.district, this.predictedCategory, required this.drivers});
+
+  factory ShapDriversResponse.fromJson(Map<String, dynamic> json) {
+    final pd = (json['primary_drivers'] as Map<String, dynamic>?) ?? const {};
+    return ShapDriversResponse(
+      district: json['district'] as String? ?? '',
+      predictedCategory: pd['predicted_category'] as String?,
+      drivers: (pd['top_features'] as List?)
+              ?.map((e) => ShapDriver.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
 }
