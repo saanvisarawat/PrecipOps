@@ -23,3 +23,5 @@ xgboost==3.4.1
 shap==0.52.0
 chromadb==1.5.9
 google-genai>=0.3.0
+geopandas>=1.1.0
+shapely>=2.0.0
